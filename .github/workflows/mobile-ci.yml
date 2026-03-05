@@ -1,0 +1,19 @@
+name: Mobile CI
+on:
+  push:
+    paths: ['mobile/**']
+  pull_request:
+    paths: ['mobile/**']
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install and lint
+        working-directory: mobile
+        run: |
+          npm ci
+          npm run lint

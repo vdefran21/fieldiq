@@ -1,0 +1,11 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fieldiq
+
+fieldiq:
+  instance:
+    id: instance-a
+    base-url: http://localhost:8080

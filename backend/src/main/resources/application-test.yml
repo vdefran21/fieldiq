@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fieldiq_test
+    username: fieldiq
+    password: testpass
+
+  data:
+    redis:
+      url: redis://localhost:6379
+
+  flyway:
+    enabled: true
+
+fieldiq:
+  instance:
+    id: test-instance
+    secret: test-instance-secret
+    base-url: http://localhost:8080
+  jwt:
+    secret: test-secret

@@ -1,0 +1,25 @@
+# Environment
+.env.local
+.env
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Gradle
+.gradle/
+build/
+
+# Expo
+mobile/.expo/
+
+# Misc
+*.log

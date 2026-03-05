@@ -1,0 +1,60 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fieldiq-db
+    environment:
+      POSTGRES_DB: fieldiq
+      POSTGRES_USER: fieldiq
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fieldiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fieldiq-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  localstack:
+    image: localstack/localstack:3
+    container_name: fieldiq-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,s3,secretsmanager
+      - DEFAULT_REGION=us-east-1
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./infra/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+
+  # Second Postgres for cross-team negotiation protocol testing
+  # Simulates Team B's FieldIQ instance on a separate DB
+  postgres-team-b:
+    image: postgres:16-alpine
+    container_name: fieldiq-db-team-b
+    environment:
+      POSTGRES_DB: fieldiq_team_b
+      POSTGRES_USER: fieldiq
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data_b:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+  postgres_data_b:
+  redis_data:
+  localstack_data:
