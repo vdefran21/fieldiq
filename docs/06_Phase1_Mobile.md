@@ -1,0 +1,105 @@
+# FieldIQ -- Phase 1 Mobile (React Native Expo)
+
+iOS first. Keep it minimal -- the AI does the work, the UI just shows results and asks for approval.
+
+---
+
+## Screen Inventory -- Phase 1 Only
+
+```
+/login                  Phone number entry -> OTP verify -> JWT stored in SecureStore
+/(app)/index            Schedule feed: upcoming events, pending negotiations
+/(app)/team             Roster list, member availability status, RSVP tracking
+/(app)/negotiate/:id    Negotiation approval screen (the key UX moment)
+/(app)/settings         Calendar connect, notification preferences, push token registration
+```
+
+---
+
+## Negotiation Approval Screen -- Most Important UX
+
+```tsx
+// This screen is THE killer feature made visible to the user
+// When the AI finds a mutual time, this is what the manager sees
+
+export default function NegotiationApprovalScreen() {
+  // Subscribes to WebSocket for real-time updates during active negotiation
+  // Shows different states:
+  //
+  // PROPOSING state:
+  // ---------------------------------
+  //  Negotiating with [Opponent Team]
+  //  Round 2 of 3
+  //
+  //  [Animated "Finding mutual time..." indicator]
+  //  Use Lottie animation or Expo built-in Animated API
+  //  for a subtle pulsing/searching visual. This is the
+  //  moment users feel the magic -- make it delightful.
+  //
+  //  Finding a time that works for
+  //  both teams...
+  //  [Cancel Negotiation]
+  // ---------------------------------
+  //
+  // PENDING_APPROVAL state:
+  // ---------------------------------
+  //  Match Found!
+  //  FieldIQ found a time that works
+  //  for both teams.
+  //
+  //  vs. [Opponent Team Name]
+  //  Saturday, April 5
+  //  10:00 AM - 11:30 AM
+  //  [Location]
+  //
+  //  [Confirm Game]    [Suggest Different Time]
+  // ---------------------------------
+  //
+  // CONFIRMED state:
+  // ---------------------------------
+  //  Game Scheduled!
+  //  vs. [Opponent Team Name]
+  //  Saturday, April 5 at 10:00 AM
+  //  [Add to Calendar]  <- downloads .ics file
+  // ---------------------------------
+}
+```
+
+---
+
+## `services/api.ts` -- Backend Client
+
+```typescript
+// Single API client -- all screens import from here
+// In dev: points to localhost:8080
+// In beta: points to production URL
+
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
+
+export const api = {
+  auth: {
+    requestOtp: (contact: string, channel: 'sms' | 'email') => ...,
+    verifyOtp: (contact: string, otp: string) => ...,
+    refresh: (refreshToken: string) => ...,
+    logout: (refreshToken: string) => ...,
+  },
+  team: {
+    get: (teamId: string) => ...,
+    getEvents: (teamId: string) => ...,
+    suggestWindows: (teamId: string, params: WindowParams) => ...,
+  },
+  events: {
+    respond: (eventId: string, status: RsvpStatus) => ...,
+  },
+  negotiation: {
+    initiate: (params: InitiateParams) => ...,
+    getSession: (sessionId: string) => ...,
+    confirm: (sessionId: string, slot: TimeSlot) => ...,
+    cancel: (sessionId: string) => ...,
+  },
+  devices: {
+    register: (expoPushToken: string, platform: string) => ...,
+    unregister: (expoPushToken: string) => ...,
+  },
+};
+```

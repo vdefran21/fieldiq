@@ -1,0 +1,55 @@
+# FieldIQ -- Phase 1 Auth & Calendar Integration
+
+---
+
+## Auth Layer -- Phone OTP (Passwordless)
+
+Parents will not remember passwords. Phone OTP is the right call.
+
+```
+Flow:
+1. User enters phone number in app
+2. Backend checks Redis rate limit (3 per 15min, 10 per 24h per identifier)
+3. Backend generates 6-digit OTP, stores hashed version with 10-min expiry in auth_tokens
+4. OTP sent via Twilio SMS (or email via SendGrid in dev -- cheaper)
+5. User enters OTP -> backend verifies hash -> issues:
+   - JWT access token (15min expiry)
+   - Refresh token (30 days) -- stored hashed in refresh_tokens table
+6. Refresh token stored client-side in SecureStore (React Native) -- never in AsyncStorage
+7. On refresh: old refresh token is revoked, new one issued (rotation)
+8. On logout: refresh token revoked server-side
+
+Dev shortcut: if phone starts with +1555, accept OTP "000000" without
+sending SMS. Saves Twilio costs during development.
+```
+
+---
+
+## Google Calendar Integration
+
+```
+OAuth Flow:
+1. User taps "Connect Google Calendar" in Settings
+2. App opens: GET /auth/google/authorize -> redirects to Google OAuth
+3. User grants permission
+4. Google redirects to: /auth/google/callback?code=...
+5. Backend exchanges code for access_token + refresh_token
+6. Tokens stored encrypted in calendar_integrations table
+7. Backend enqueues SYNC_CALENDAR task to SQS immediately
+8. Agent worker processes: calls Google FreeBusy API, stores busy blocks
+9. Subsequent syncs run every 4 hours via scheduled SQS message
+
+What we pull from Google Calendar:
+- Busy blocks only (we never read event titles/details -- privacy matters)
+- Stored as availability_windows with source='google_cal', window_type='unavailable'
+- Refreshed automatically using stored refresh_token
+
+Scopes needed:
+- https://www.googleapis.com/auth/calendar.readonly
+  (use FreeBusy endpoint; read-only -- minimal permissions, trust-building)
+
+Phase 1 non-goal: No calendar write-back.
+When a game is confirmed, the notification includes an "Add to Calendar"
+link that downloads a .ics file. Automatic Google Calendar event creation
+requires write scope and is deferred to Phase 2.
+```
