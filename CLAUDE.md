@@ -99,3 +99,84 @@ The core IP. State machine flow:
 - No child PII in `users` table (COPPA). Only parent/coach data. Child names only in `team_members.player_name`
 - Dev OTP bypass: `+1555*` phone numbers are exempt from rate limiting
 - WebSocket is server-to-client push only in Phase 1 — all mutations go through REST
+
+---
+
+## Documentation Standards (KDoc)
+
+> **THIS IS NOT OPTIONAL.** Every code change — new code, refactored code, changed signatures,
+> renamed parameters, modified behavior — MUST include corresponding KDoc updates in the same
+> commit. Stale documentation is worse than no documentation. If you change how something works,
+> update the KDoc to reflect the current state before committing.
+
+### What Must Be Documented
+
+**Every** public and internal class, function, method, and property must have KDoc. No exceptions.
+This includes:
+
+- Domain entities (explain what the table represents, relationships, constraints)
+- Repository interfaces (explain query semantics, what "find by X" actually returns)
+- Service classes (explain business logic, orchestration role, side effects)
+- Controller endpoints (explain request/response contract, auth requirements)
+- Configuration classes (explain what they configure and why)
+- Data classes / DTOs (explain what each field means in business terms)
+- Extension functions and utilities
+
+### KDoc Format
+
+```kotlin
+/**
+ * Brief one-line summary of what this class/function does.
+ *
+ * More detailed explanation including:
+ * - WHY this exists (business context, not just "it does X")
+ * - HOW it fits into the larger architecture
+ * - Key behavior or side effects (DB writes, SQS messages, etc.)
+ * - Important constraints or invariants
+ * - Thread safety / concurrency considerations if relevant
+ *
+ * Example usage (when non-obvious):
+ * ```
+ * val guard = TeamAccessGuard(repo)
+ * val member = guard.requireManager(userId, teamId) // throws if not manager
+ * ```
+ *
+ * @property propertyName Description of constructor property (for data classes)
+ * @param paramName Description of parameter including valid values/ranges
+ * @return Description of return value, including null semantics
+ * @throws ExceptionType When and why this exception is thrown
+ * @see RelatedClass for cross-references to related components
+ */
+```
+
+### Documentation Checklist (Applied to Every Change)
+
+1. **Class-level KDoc**: Purpose, architectural role, key behaviors, configuration needs
+2. **Function-level KDoc**: What it does, all params, return value, thrown exceptions, side effects
+3. **Property-level KDoc**: Business meaning, valid values, constraints, nullability semantics
+4. **Edge cases**: Document null handling, empty collections, boundary conditions
+5. **Cross-references**: Use `@see` to link related classes (e.g., entity ↔ repository ↔ service)
+6. **Concurrency**: Note if a method is suspend, blocking, or has thread-safety requirements
+7. **Database impact**: Note if a method reads, writes, or modifies DB state
+8. **SQS/async**: Note if a method enqueues messages or triggers async side effects
+
+### Anti-Patterns to Avoid
+
+- **Parrot docs**: `/** Gets the name. */ fun getName()` — useless. Explain *what* name, *whose* name, *why* you need it.
+- **Implementation details as docs**: Don't describe *how* the code works line-by-line. Describe *what* it achieves and *why*.
+- **Missing exception docs**: If a function throws, document it. Callers need to know.
+- **Stale docs**: The #1 violation. If you change a function's behavior, **update the KDoc in the same commit**. Period.
+
+### TypeScript Documentation (Shared Types)
+
+The `shared/types/index.ts` file uses JSDoc-style comments following the same principles:
+- Every interface and its fields must have doc comments
+- Explain business meaning, not just type information
+- Note which Kotlin DTO each interface corresponds to
+
+### SQL Migration Documentation
+
+Each migration file must include:
+- A header comment explaining what the migration does and why
+- Inline comments for non-obvious constraints, indexes, or design decisions
+- Reference to the relevant design doc (e.g., `-- See docs/01_Phase1_Schema.md`)
