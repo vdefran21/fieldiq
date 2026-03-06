@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-06
+**Last updated:** 2026-03-06 (session 3 — Sprint 2 KDoc complete)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -50,53 +50,54 @@
 
 ---
 
-## Sprint 2 (Weeks 3–4): CORE CRUD + AUTH ⬜
+## Sprint 2 (Weeks 3–4): CORE CRUD + AUTH ✅
 
 ### Auth Layer
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 02 | `POST /auth/request-otp` — send OTP via SMS/email | |
-| ⬜ | 02 | `POST /auth/verify-otp` — verify hashed OTP, issue JWT + refresh token | |
-| ⬜ | 02 | `POST /auth/refresh` — rotate refresh token, issue new JWT | |
-| ⬜ | 02 | `POST /auth/logout` — revoke refresh token | |
-| ⬜ | 02 | JWT generation service (15min access, refresh rotation) | |
-| ⬜ | 03 | JWT authentication filter (validate on every request) | |
-| ⬜ | 02 | OTP rate limiting — Redis-backed (3/15min, 10/24h per identifier) | |
-| ⬜ | 02 | OTP rate limiting — DB persistence for audit | |
-| ⬜ | 02 | Dev OTP bypass for `+1555*` phone numbers | |
+| ✅ | 02 | `POST /auth/request-otp` — send OTP via SMS/email | `AuthController.kt`, `AuthService.requestOtp()` |
+| ✅ | 02 | `POST /auth/verify-otp` — verify hashed OTP, issue JWT + refresh token | `AuthController.kt`, `AuthService.verifyOtp()` |
+| ✅ | 02 | `POST /auth/refresh` — rotate refresh token, issue new JWT | `AuthController.kt`, `AuthService.refreshToken()` |
+| ✅ | 02 | `POST /auth/logout` — revoke refresh token | `AuthController.kt`, `AuthService.logout()` |
+| ✅ | 02 | JWT generation service (15min access, refresh rotation) | `JwtService.kt` — HS256, configurable expiry |
+| ✅ | 03 | JWT authentication filter (validate on every request) | `JwtAuthenticationFilter.kt` — `OncePerRequestFilter` |
+| ✅ | 02 | OTP rate limiting — Redis-backed (3/15min, 10/24h per identifier) | `OtpRateLimitService.kt`, `RedisConfig.kt` |
+| ✅ | 02 | OTP rate limiting — DB persistence for audit | `OtpRateLimitService.recordAttempt()` → `otp_rate_limits` |
+| ✅ | 02 | Dev OTP bypass for `+1555*` phone numbers | `AuthService.requestOtp()` + `OtpRateLimitService.isDevBypass()` |
 
 ### Team & Member CRUD
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 03 | `POST /teams` — create team (creator becomes manager) | |
-| ⬜ | 03 | `GET /teams/:teamId` — get team details | |
-| ⬜ | 03 | `POST /teams/:teamId/members` — add member to team | |
-| ⬜ | 03 | `TeamService` with access control via `TeamAccessGuard` | |
+| ✅ | 03 | `POST /teams` — create team (creator becomes manager) | `TeamController.kt`, `TeamService.createTeam()` |
+| ✅ | 03 | `GET /teams/:teamId` — get team details | `TeamController.kt`, `TeamService.getTeam()` |
+| ✅ | 03 | `POST /teams/:teamId/members` — add member to team | `TeamController.kt`, `TeamService.addMember()` |
+| ✅ | 03 | `TeamService` with access control via `TeamAccessGuard` | `TeamService.kt` — all ops use guard |
 
 ### Event CRUD
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 03 | `POST /teams/:teamId/events` — create event | |
-| ⬜ | 03 | `GET /teams/:teamId/events` — list team events | |
-| ⬜ | 03 | `PATCH /events/:eventId` — update event | |
-| ⬜ | 03 | `POST /events/:eventId/respond` — RSVP | |
-| ⬜ | 03 | `EventService` | |
+| ✅ | 03 | `POST /teams/:teamId/events` — create event | `EventController.kt`, `EventService.createEvent()` |
+| ✅ | 03 | `GET /teams/:teamId/events` — list team events | `EventController.kt`, `EventService.getTeamEvents()` |
+| ✅ | 03 | `PATCH /events/:eventId` — update event | `EventController.kt`, `EventService.updateEvent()` |
+| ✅ | 03 | `POST /events/:eventId/respond` — RSVP | `EventController.kt`, `EventService.respondToEvent()` |
+| ✅ | 03 | `EventService` | `EventService.kt` — full CRUD + RSVP upsert |
 
 ### Availability & Devices
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 03 | `POST /users/me/availability` — set availability windows | |
-| ⬜ | 03 | `GET /teams/:teamId/availability` — get team availability | |
-| ⬜ | 03 | `AvailabilityWindowService` | |
-| ⬜ | 03 | `POST /users/me/devices` — register push token | |
+| ✅ | 03 | `POST /users/me/availability` — set availability windows | `AvailabilityController.kt`, `AvailabilityWindowService.createWindow()` |
+| ✅ | 03 | `GET /teams/:teamId/availability` — get team availability | `AvailabilityController.kt`, `AvailabilityWindowService.getTeamAvailability()` |
+| ✅ | 03 | `AvailabilityWindowService` | `AvailabilityWindowService.kt` — validation + CRUD |
+| ✅ | 03 | `POST /users/me/devices` — register push token | `UserController.kt`, `UserDeviceService.registerDevice()` |
 
 ### Testing
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 07 | Unit tests for AuthService | |
-| ⬜ | 07 | Unit tests for TeamService | |
-| ⬜ | 07 | Unit tests for EventService | |
-| ⬜ | 07 | Unit tests for AvailabilityWindowService | |
+| ✅ | 07 | Unit tests for AuthService | `AuthServiceTest.kt` — 16 tests (OTP request/verify, refresh rotation, logout) |
+| ✅ | 07 | Unit tests for TeamService | `TeamServiceTest.kt` — 10 tests (create, get, addMember, getMembers) |
+| ✅ | 07 | Unit tests for EventService | `EventServiceTest.kt` — 12 tests (create, list, update, RSVP upsert, responses) |
+| ✅ | 07 | Unit tests for AvailabilityWindowService | `AvailabilityWindowServiceTest.kt` — 10 tests (create, validate, query, delete) + `JwtServiceTest.kt` (10), `OtpRateLimitServiceTest.kt` (11). Total: 87/87 passing |
+| ✅ | 07 | Comprehensive KDoc on all 6 test files | All test classes, nested classes, test methods, and properties fully documented per CLAUDE.md standards. `@see` cross-references, security rationale, edge case explanations. 87/87 tests still passing after KDoc. |
 
 ---
 
@@ -247,11 +248,11 @@
 | Sprint | Name | Status | Tasks Done | Tasks Total |
 |--------|------|--------|------------|-------------|
 | 1 | Foundation | ✅ Complete | 23/23 | 23 |
-| 2 | Core CRUD + Auth | ⬜ Not Started | 0/21 | 21 |
+| 2 | Core CRUD + Auth | ✅ Complete | 21/21 | 21 |
 | 3 | Scheduling + Calendar Sync | ⬜ Not Started | 0/14 | 14 |
 | 4 | Negotiation Protocol v1 | ⬜ Not Started | 0/18 | 18 |
 | 5 | React Native App | ⬜ Not Started | 0/10 | 10 |
 | 6 | Negotiation UX + Notifications | ⬜ Not Started | 0/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
 | 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **23/104** | **104** |
+| **Total** | | | **44/104** | **104** |

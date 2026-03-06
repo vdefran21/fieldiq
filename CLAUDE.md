@@ -143,7 +143,7 @@ The core IP. State machine flow:
 
 **Every** public and internal class, function, method, and property must have KDoc. No exceptions.
 This includes:
-
+- Unit tests
 - Domain entities (explain what the table represents, relationships, constraints)
 - Repository interfaces (explain query semantics, what "find by X" actually returns)
 - Service classes (explain business logic, orchestration role, side effects)
