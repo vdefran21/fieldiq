@@ -2,6 +2,7 @@ package com.fieldiq.repository
 
 import com.fieldiq.domain.Event
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
 import java.time.Instant
 import java.util.UUID
 
@@ -47,4 +48,31 @@ interface EventRepository : JpaRepository<Event, UUID> {
      * @return All events for the team, empty list if none exist.
      */
     fun findByTeamId(teamId: UUID): List<Event>
+
+    /**
+     * Finds scheduled or draft events that overlap with a given time range.
+     *
+     * Used by [com.fieldiq.service.SchedulingService] to detect conflicts when
+     * computing available windows. An event overlaps the range if it starts before
+     * the range ends AND ends after the range starts. Only "scheduled" and "draft"
+     * events are considered — cancelled/completed events are ignored.
+     *
+     * Events with null [Event.startsAt] or [Event.endsAt] (unscheduled drafts)
+     * are excluded since they don't occupy a definite time slot.
+     *
+     * @param teamId The UUID of the team.
+     * @param rangeStart Start of the time range (inclusive).
+     * @param rangeEnd End of the time range (exclusive).
+     * @return Events that overlap with the specified range, empty list if none.
+     */
+    @Query(
+        """
+        SELECT e FROM Event e
+        WHERE e.teamId = :teamId
+          AND e.startsAt < :rangeEnd
+          AND e.endsAt > :rangeStart
+          AND e.status IN ('scheduled', 'draft')
+        """
+    )
+    fun findOverlappingEvents(teamId: UUID, rangeStart: Instant, rangeEnd: Instant): List<Event>
 }

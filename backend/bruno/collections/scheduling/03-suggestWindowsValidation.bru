@@ -1,0 +1,50 @@
+meta {
+  name: 03-suggestWindowsValidation
+  type: http
+  seq: 3
+}
+
+docs {
+  Verifies that the suggest-windows endpoint validates the request body.
+  Sends invalid duration (0) and expects a 400 response.
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/teams/{{teamId}}/suggest-windows
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {
+    "dateRangeStart": "2026-04-01",
+    "dateRangeEnd": "2026-04-07",
+    "durationMinutes": 0
+  }
+}
+
+assert {
+  res.status: eq 400
+}
+
+tests {
+  const { expect } = require('chai');
+  test('returns error for invalid duration', () => {
+    expect(res.body).to.have.property('error');
+  });
+}

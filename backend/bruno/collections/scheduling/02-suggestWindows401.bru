@@ -1,0 +1,47 @@
+meta {
+  name: 02-suggestWindows401
+  type: http
+  seq: 2
+}
+
+docs {
+  Verifies that the suggest-windows endpoint requires authentication.
+  Sends a request without a JWT and expects a 401 response.
+}
+
+script:pre-request {
+  const { ensureTeam, loginAs } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+    // Clear the token so the request is unauthenticated
+    bru.setVar('noAuthToken', 'invalid-token');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/teams/{{teamId}}/suggest-windows
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{noAuthToken}}
+}
+
+body:json {
+  {
+    "dateRangeStart": "2026-04-01",
+    "dateRangeEnd": "2026-04-07",
+    "durationMinutes": 90
+  }
+}
+
+assert {
+  res.status: eq 401
+  res.body.error: eq UNAUTHORIZED
+  res.body.status: eq 401
+}

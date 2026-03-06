@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-06 (session 5 — Bruno CLI test fixes, SecurityConfig 401 fix, JVM timezone fix)
+**Last updated:** 2026-03-06 (session 6 — Sprint 3: SchedulingService, suggest-windows endpoint, 21 new unit tests)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -113,7 +113,7 @@
 
 ---
 
-## Sprint 3 (Weeks 5–6): SCHEDULING + CALENDAR SYNC ⬜
+## Sprint 3 (Weeks 5–6): SCHEDULING + CALENDAR SYNC 🔧
 
 ### Google Calendar Integration
 | Status | Doc | Task | Evidence / Notes |
@@ -134,11 +134,17 @@
 ### Scheduling Service
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 03 | `SchedulingService.kt` — deterministic window computation | |
-| ⬜ | 03 | `findAvailableWindows()` — find team availability windows | |
-| ⬜ | 03 | Window ranking by confidence (% members available) | |
-| ⬜ | 03 | `intersectWindows()` — cross-team window matching | |
-| ⬜ | 03 | `POST /teams/:teamId/suggest-windows` endpoint | |
+| ✅ | 03 | `SchedulingService.kt` — deterministic window computation | `backend/src/main/kotlin/com/fieldiq/service/SchedulingService.kt` — sweep-line algorithm, interval arithmetic, org timezone resolution. |
+| ✅ | 03 | `findAvailableWindows()` — find team availability windows | Per-date member availability aggregation, merges recurring + specific-date windows, subtracts events. Returns top 10 by confidence. |
+| ✅ | 03 | Window ranking by confidence (% members available) | Confidence = available_members / total_members. Preferred-day boost (1.25x, capped at 1.0). |
+| ✅ | 03 | `intersectWindows()` — cross-team window matching | O(n*m) pairwise overlap detection, min-confidence scoring, threshold filtering. |
+| ✅ | 03 | `POST /teams/:teamId/suggest-windows` endpoint | `SchedulingController.kt` + `SchedulingDtos.kt` (SuggestWindowsRequest, TimeWindowDto). JWT auth + TeamAccessGuard. |
+
+### Scheduling Tests
+| Status | Doc | Task | Evidence / Notes |
+|--------|-----|------|------------------|
+| ✅ | 07 | Unit tests for SchedulingService | `SchedulingServiceTest.kt` — 21 tests: input validation (5), single member availability (4), multi-member confidence (2), event conflicts (1), preferred days (1), result limiting/timezone (2), intersectWindows (6). 113/113 total tests passing. |
+| ✅ | 07 | Bruno integration tests for suggest-windows | `backend/bruno/collections/scheduling/` — 3 tests: happy path, 401 auth, validation. |
 
 ### Cross-Instance Relay Scaffolding
 | Status | Doc | Task | Evidence / Notes |
@@ -261,10 +267,10 @@
 |--------|------|--------|------------|-------------|
 | 1 | Foundation | ✅ Complete | 23/23 | 23 |
 | 2 | Core CRUD + Auth | ✅ Complete | 24/24 | 24 |
-| 3 | Scheduling + Calendar Sync | ⬜ Not Started | 0/14 | 14 |
+| 3 | Scheduling + Calendar Sync | 🔧 In Progress | 7/16 | 16 |
 | 4 | Negotiation Protocol v1 | ⬜ Not Started | 0/18 | 18 |
 | 5 | React Native App | ⬜ Not Started | 0/10 | 10 |
 | 6 | Negotiation UX + Notifications | ⬜ Not Started | 0/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
 | 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **47/107** | **107** |
+| **Total** | | | **54/109** | **109** |
