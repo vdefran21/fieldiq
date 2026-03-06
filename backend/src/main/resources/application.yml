@@ -39,7 +39,7 @@ fieldiq:
     secret: ${FIELDIQ_INSTANCE_SECRET:dev-instance-secret-change-in-production}
     base-url: ${FIELDIQ_INSTANCE_BASE_URL:http://localhost:8080}
   jwt:
-    secret: ${JWT_SECRET:dev-secret-change-in-production}
+    secret: ${JWT_SECRET:dev-secret-change-in-production!}
     expiration-ms: 900000        # 15 minutes
     refresh-expiration-ms: 2592000000  # 30 days
   aws:
