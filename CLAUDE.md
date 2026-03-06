@@ -24,7 +24,7 @@ backend/          Kotlin Spring Boot API (scheduling, negotiation, auth, REST, W
 agent/            Node.js/TypeScript SQS workers + Claude Haiku integration
 mobile/           React Native Expo app (iOS)
 shared/types/     TypeScript API contract interfaces
-docs/             Phase 1 implementation plans (00-07)
+docs/             Phase 1 implementation plans (00-07) + IMPLEMENTATION_TRACKING.md
 infra/            LocalStack init scripts
 ```
 
@@ -92,6 +92,28 @@ The core IP. State machine flow:
 3. Both instances exchange slot proposals (up to `max_rounds`, default 3)
 4. On match → `pending_approval` → both managers confirm → events created on both teams
 5. Proposals are idempotent: unique constraint on `(session_id, round_number, proposed_by)`
+
+## Implementation Tracking
+
+> **THIS IS MANDATORY.** Before ending any session — whether pausing, stopping, or completing work —
+> you MUST update `docs/IMPLEMENTATION_TRACKING.md` to reflect the current state of all tasks.
+> This is the single source of truth for project progress.
+
+**File:** `docs/IMPLEMENTATION_TRACKING.md`
+
+**When to update:**
+- **Before every stop/pause:** Mark tasks completed (✅), in progress (🔧), or not started (⬜). Fill in the "Evidence / Notes" column with file paths or details for any task you touched.
+- **After completing a task:** Immediately update the status and evidence column for that task.
+- **After adding new code:** If the work maps to a tracked task, update it. If it doesn't map to any existing task, add a row.
+- **Progress Summary table:** Update the "Tasks Done" counts in the summary table at the bottom of the file whenever task statuses change.
+
+**What to record in "Evidence / Notes":**
+- File paths created or modified (e.g., `backend/src/main/kotlin/com/fieldiq/api/AuthController.kt`)
+- Test results (e.g., "14/14 tests passing")
+- Blockers or issues encountered
+- Anything the next session needs to know to pick up where you left off
+
+**Do not skip this.** Stale tracking is worse than no tracking.
 
 ## Important Conventions
 
