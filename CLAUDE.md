@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## GIT
+
+Never commit or push changes. 
+
+## GENERAL DEVELOPMENT
+
+When running in "bypass permissions" or "auto accept edits" modes, be sure to stop at reasonable intervals for user review and potential commit events.
+
 ## Project Overview
 
 FieldIQ is an AI-powered youth sports management platform. The core differentiator is a **cross-team scheduling negotiation protocol** — two FieldIQ instances autonomously negotiate game times between teams on different instances.
@@ -202,3 +210,4 @@ Each migration file must include:
 - A header comment explaining what the migration does and why
 - Inline comments for non-obvious constraints, indexes, or design decisions
 - Reference to the relevant design doc (e.g., `-- See docs/01_Phase1_Schema.md`)
+
