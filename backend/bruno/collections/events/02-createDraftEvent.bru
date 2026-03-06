@@ -48,6 +48,6 @@ assert {
 tests {
   const { expect } = require('chai');
   test('draft event has no start time', () => {
-    expect(res.body.startsAt).to.be.null;
+    expect(res.body.startsAt).to.be.undefined;
   });
 }

@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Never commit or push changes. 
 
+## Testing Philosophy
+
+When Bruno API tests or any integration tests fail, **never modify backend code just to make a test pass**. Always:
+1. Consult the implementation guides in `docs/` to determine the expected behavior.
+2. Confirm whether the test expectation matches the spec before changing anything.
+3. If the backend behavior matches the docs, fix the test.
+4. If the backend behavior contradicts the docs, fix the backend.
+5. If the docs are ambiguous, flag it for user review before making changes.
+
+The docs are the source of truth for expected behavior — not the tests, and not the current code.
+
 ## GENERAL DEVELOPMENT
 
 When running in "bypass permissions" or "auto accept edits" modes, be sure to stop at reasonable intervals for user review and potential commit events.

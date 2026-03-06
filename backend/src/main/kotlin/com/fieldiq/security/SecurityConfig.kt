@@ -1,7 +1,9 @@
 package com.fieldiq.security
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -43,6 +45,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val objectMapper: ObjectMapper,
 ) {
 
     /**
@@ -60,6 +63,16 @@ class SecurityConfig(
         http
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .exceptionHandling { ex ->
+                ex.authenticationEntryPoint { _, response, _ ->
+                    response.status = 401
+                    response.contentType = MediaType.APPLICATION_JSON_VALUE
+                    objectMapper.writeValue(
+                        response.outputStream,
+                        mapOf("error" to "UNAUTHORIZED", "message" to "Authentication required", "status" to 401),
+                    )
+                }
+            }
             .authorizeHttpRequests { auth ->
                 auth
                     // Public endpoints

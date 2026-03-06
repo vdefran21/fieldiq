@@ -46,6 +46,6 @@ assert {
 tests {
   const { expect } = require('chai');
   test('specific date window has no dayOfWeek', () => {
-    expect(res.body.dayOfWeek).to.be.null;
+    expect(res.body.dayOfWeek).to.be.undefined;
   });
 }

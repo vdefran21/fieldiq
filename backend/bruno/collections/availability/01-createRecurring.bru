@@ -51,7 +51,7 @@ assert {
 tests {
   const { expect } = require('chai');
   test('recurring window has no specificDate', () => {
-    expect(res.body.specificDate).to.be.null;
+    expect(res.body.specificDate).to.be.undefined;
   });
   test('time range is correct', () => {
     expect(res.body.startTime).to.equal('14:00');

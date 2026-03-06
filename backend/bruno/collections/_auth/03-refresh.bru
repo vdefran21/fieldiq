@@ -4,6 +4,10 @@ meta {
   seq: 3
 }
 
+script:pre-request {
+  bru.setVar('oldRefreshToken', bru.getVar('refreshToken'));
+}
+
 post {
   url: {{baseUrl}}/auth/refresh
   body: json
@@ -25,7 +29,7 @@ assert {
 tests {
   const { expect } = require('chai');
   test('new tokens differ from old', () => {
-    const oldRefresh = bru.getVar('refreshToken');
+    const oldRefresh = bru.getVar('oldRefreshToken');
     expect(res.body.refreshToken).to.not.equal(oldRefresh);
   });
 }

@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-06 (session 4 — OTP identifier binding security fix)
+**Last updated:** 2026-03-06 (session 5 — Bruno CLI test fixes, SecurityConfig 401 fix, JVM timezone fix)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -30,7 +30,7 @@
 | ✅ | 00 | `CLAUDE.md` with architecture decisions | `CLAUDE.md` |
 | ✅ | 00 | `README.md` with architecture overview and quick start | `README.md` |
 | ✅ | 00 | `infra/localstack-init.sh` — 3 SQS queues auto-created | `infra/localstack-init.sh` |
-| ✅ | 03 | Backend skeleton — Spring Boot 3.3, Java 21, Kotlin | `backend/build.gradle.kts`, `FieldIQApplication.kt` |
+| ✅ | 03 | Backend skeleton — Spring Boot 3.3, Java 21, Kotlin | `backend/build.gradle.kts`, `FieldIQApplication.kt`. Session 5: added `@PostConstruct` JVM timezone=UTC to prevent `LocalTime` ↔ PostgreSQL `TIME` column shift when Hibernate `jdbc.time_zone: UTC` doesn't match JVM locale. |
 | ✅ | 03 | `build.gradle.kts` with all Phase 1 dependencies | Spring Boot, JPA, WebSocket, Security, JWT, WebFlux, TestContainers, MockK |
 | ✅ | 01 | V1 migration — core tables (organizations, teams, users, team_members, auth_tokens, refresh_tokens, events, availability_windows, calendar_integrations, user_devices, event_responses) | `V1__initial_schema.sql` |
 | ✅ | 01 | V2 migration — negotiation tables (sessions, proposals, events audit) | `V2__negotiation_schema.sql` |
@@ -41,7 +41,7 @@
 | ✅ | 07 | `application-test.yml` — test profile | `backend/src/main/resources/application-test.yml` |
 | ✅ | 03 | All 13 JPA domain entities with KDoc | `backend/src/main/kotlin/com/fieldiq/domain/` |
 | ✅ | 03 | All 8 Spring Data JPA repositories | `backend/src/main/kotlin/com/fieldiq/repository/` |
-| ✅ | 03 | `SecurityConfig` — stateless JWT security scaffold | `backend/src/main/kotlin/com/fieldiq/security/SecurityConfig.kt` |
+| ✅ | 03 | `SecurityConfig` — stateless JWT security scaffold | `backend/src/main/kotlin/com/fieldiq/security/SecurityConfig.kt`. Session 5: added custom `AuthenticationEntryPoint` returning JSON `ErrorResponse` envelope with 401 for unauthenticated requests (Spring Security 6 default was bare 403). |
 | ✅ | 03 | `FieldIQProperties` — type-safe config binding | `backend/src/main/kotlin/com/fieldiq/config/FieldIQProperties.kt` |
 | ✅ | 03 | `AppConfig` — enables configuration properties | `backend/src/main/kotlin/com/fieldiq/config/AppConfig.kt` |
 | ✅ | 03 | `TeamAccessGuard` — multi-tenancy enforcement | `backend/src/main/kotlin/com/fieldiq/service/TeamAccessGuard.kt` |
@@ -101,6 +101,15 @@
 | ✅ | 07 | Unit tests for EventService | `EventServiceTest.kt` — 12 tests (create, list, update, RSVP upsert, responses) |
 | ✅ | 07 | Unit tests for AvailabilityWindowService | `AvailabilityWindowServiceTest.kt` — 10 tests (create, validate, query, delete) + `JwtServiceTest.kt` (10), `OtpRateLimitServiceTest.kt` (11). Total: 87/87 passing |
 | ✅ | 07 | Comprehensive KDoc on all 6 test files | All test classes, nested classes, test methods, and properties fully documented per CLAUDE.md standards. `@see` cross-references, security rationale, edge case explanations. 92/92 tests passing (87 original + 5 new identifier binding tests). |
+
+### Bruno API Integration Tests (Session 5)
+| Status | Doc | Task | Evidence / Notes |
+|--------|-----|------|------------------|
+| ✅ | 07 | Bruno CLI `--env` flag fix | `backend/bruno/package.json` — default `test` script was missing `--env instance-a`, causing `{{baseUrl}}` to be unresolved from CLI (Bruno GUI auto-selects env, CLI does not). |
+| ✅ | 07 | Fix `null` vs `undefined` test assertions | `01-createRecurring.bru`, `02-createSpecificDate.bru`, `02-createDraftEvent.bru` — changed `.to.be.null` → `.to.be.undefined` to match Jackson `non_null` serialization (omits null fields). |
+| ✅ | 07 | Fix refresh token rotation test | `03-refresh.bru` — added `script:pre-request` to capture old token before `script:post-response` overwrites it (Bruno runs post-response before tests). |
+| ✅ | 07 | Add 401 error envelope assertion | `03-getProfile401.bru` — added `res.body.error: eq UNAUTHORIZED` and `res.body.status: eq 401` to verify JSON envelope. |
+| ✅ | 07 | All 25 Bruno tests passing (58 assertions, 21 tests) | `npm test` in `backend/bruno/` — full pass. |
 
 ---
 
