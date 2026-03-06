@@ -10,7 +10,8 @@
 #   ./dev.sh infra    Start infrastructure only
 #   ./dev.sh a        Start infra + Instance A only
 #   ./dev.sh b        Start infra + Instance B only
-#   ./dev.sh stop     Stop everything
+#   ./dev.sh stop     Stop Docker containers for this stack
+#   ./dev.sh stop --all  Stop Docker containers and remove compose images + volumes
 # ============================================================================
 
 set -euo pipefail
@@ -49,6 +50,12 @@ stop_all() {
   echo -e "${YELLOW}Stopping all Docker containers...${NC}"
   docker compose -f "$ROOT_DIR/docker-compose.yml" down
   echo -e "${GREEN}All services stopped.${NC}"
+}
+
+stop_all_and_prune() {
+  echo -e "${YELLOW}Stopping all Docker containers and removing compose images + volumes...${NC}"
+  docker compose -f "$ROOT_DIR/docker-compose.yml" down --rmi all --volumes --remove-orphans
+  echo -e "${GREEN}All services, compose images, and volumes removed.${NC}"
 }
 
 start_infra() {
@@ -147,7 +154,18 @@ MODE="${1:-all}"
 
 case "$MODE" in
   stop)
-    stop_all
+    case "${2:-}" in
+      "")
+        stop_all
+        ;;
+      --all)
+        stop_all_and_prune
+        ;;
+      *)
+        echo "Usage: ./dev.sh stop [--all]"
+        exit 1
+        ;;
+    esac
     exit 0
     ;;
   infra)
@@ -181,7 +199,7 @@ case "$MODE" in
     wait
     ;;
   *)
-    echo "Usage: ./dev.sh [all|infra|a|b|stop]"
+    echo "Usage: ./dev.sh [all|infra|a|b|stop [--all]]"
     exit 1
     ;;
 esac
