@@ -2,10 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## GIT
-
-Never commit or push changes. 
-
 ## Testing Philosophy
 
 When Bruno API tests or any integration tests fail, **never modify backend code just to make a test pass**. Always:
@@ -22,6 +18,7 @@ The docs are the source of truth for expected behavior — not the tests, and no
 When running in "bypass permissions" or "auto accept edits" modes, be sure to stop at reasonable intervals for user review and potential commit events.
 
 ### DO NOT
+ - commit or push changes to git 
  - kill processes (pids)
  - attempt to run the application yourself
    - if you need the application running, notify the user what needs to be running and in what capacity
@@ -138,6 +135,37 @@ The core IP. State machine flow:
 - Anything the next session needs to know to pick up where you left off
 
 **Do not skip this.** Stale tracking is worse than no tracking.
+
+## Test Maintenance
+
+> **THIS IS MANDATORY.** Any code change that affects backend behavior MUST include
+> corresponding test updates — both unit tests and Bruno integration tests — **in the
+> same session**, before moving on to the next sprint or task.
+
+### When to update tests
+
+The following changes require updating **both** unit tests (`backend/src/test/`) **and** Bruno integration tests (`backend/bruno/`):
+
+- Changing a DTO field (adding, removing, renaming, changing nullability)
+- Changing HTTP status codes (e.g., 400 → 422, 403 → 401)
+- Changing error response format or envelope structure
+- Changing Jackson serialization config (e.g., `non_null`, date formats)
+- Changing Spring Security behavior (auth entry points, filter chain)
+- Changing database constraints that affect what the API can accept or return
+- Changing validation rules (`@Valid`, `@Pattern`, custom validators)
+- Changing service-layer logic (business rules, exception types, return values)
+- Changing repository query methods or signatures
+
+### Process
+
+1. Make the backend code change.
+2. Run `cd backend && ./gradlew test` to identify any broken unit tests.
+3. Run `cd backend/bruno && npm test` to identify any broken Bruno integration tests.
+4. For each failure, follow the Testing Philosophy (consult docs first — fix the test or the backend accordingly).
+5. Verify **all** unit tests and **all** Bruno tests pass before considering the task complete.
+6. Update `docs/IMPLEMENTATION_TRACKING.md` documenting what changed and why.
+
+**Do not defer this.** Test drift creates false confidence. Passing unit tests with failing integration tests means the API contract is broken from the client's perspective. Passing integration tests with failing unit tests means internal logic has diverged from expectations.
 
 ## Important Conventions
 
