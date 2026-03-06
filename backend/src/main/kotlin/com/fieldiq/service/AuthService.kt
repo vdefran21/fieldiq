@@ -27,6 +27,13 @@ import java.util.*
  * Refresh tokens are 32-byte random values, also hashed before storage.
  * Neither raw value is ever persisted.
  *
+ * **Identifier binding:** Each OTP token is bound to the normalized identifier (phone
+ * or email) it was requested for. The identifier is normalized ([normalizeIdentifier])
+ * and hashed before storage. On verification, the same normalization and hashing is
+ * applied to the submitted identifier, and the lookup query includes the identifier
+ * hash. This prevents a valid OTP for one identity from being used to authenticate
+ * as a different identity on the same channel.
+ *
  * External SMS/email sending is stubbed in Phase 1 (logs to console).
  * Dev bypass: identifiers starting with "+1555" accept OTP "000000".
  *
@@ -59,9 +66,12 @@ class AuthService(
      * Initiates the OTP flow by generating and "sending" a code.
      *
      * Validates the identifier format, checks rate limits, generates a 6-digit
-     * OTP, hashes it, and stores it in auth_tokens. In production, the raw OTP
-     * would be sent via Twilio (SMS) or SendGrid (email). In Phase 1, it is
-     * logged to the console.
+     * OTP, hashes it, and stores it in auth_tokens along with a hash of the
+     * normalized identifier. This identifier binding ensures the OTP can only
+     * be verified by the same phone/email that requested it.
+     *
+     * In production, the raw OTP would be sent via Twilio (SMS) or SendGrid
+     * (email). In Phase 1, it is logged to the console.
      *
      * Dev bypass: for "+1555" phone numbers, the OTP "000000" is always used
      * and rate limiting is skipped.
@@ -77,11 +87,14 @@ class AuthService(
 
         rateLimitService.checkRateLimit(identifier)
 
+        val normalizedId = normalizeIdentifier(channel, identifier)
         val otp = if (identifier.startsWith("+1555")) DEV_OTP else generateOtp()
         val hashedOtp = jwtService.hashToken(otp)
+        val identifierHash = jwtService.hashToken(normalizedId)
 
         val authToken = AuthToken(
             tokenHash = hashedOtp,
+            identifierHash = identifierHash,
             channel = channel,
             expiresAt = Instant.now().plus(OTP_EXPIRY_MINUTES, ChronoUnit.MINUTES),
         )
@@ -96,23 +109,33 @@ class AuthService(
     /**
      * Verifies an OTP code and returns JWT + refresh token on success.
      *
-     * Looks up the auth token by channel + hash, verifies it is not expired
-     * or already used, then marks it as used. If the user does not exist,
-     * creates a new User record (auto sign-up). Issues a JWT access token
-     * and a refresh token.
+     * Validates the identifier format, normalizes and hashes it, then looks up
+     * the auth token by channel + OTP hash + identifier hash. The identifier hash
+     * binding ensures the submitted OTP can only authenticate the same phone/email
+     * that originally requested it.
+     *
+     * If the token is found and not expired, it is marked as used. If the user
+     * does not exist, a new User record is created (auto sign-up). Issues a JWT
+     * access token and a refresh token.
      *
      * @param channel "sms" or "email".
      * @param identifier Phone (E.164) or email address.
      * @param otp The 6-digit code submitted by the user.
      * @return [AuthResponse] with access token, refresh token, and user profile.
      * @throws InvalidOtpException If the OTP is invalid, expired, or already used.
+     * @throws IllegalArgumentException If the channel or identifier format is invalid.
      */
     @Transactional
     fun verifyOtp(channel: String, identifier: String, otp: String): AuthResponse {
-        val hashedOtp = jwtService.hashToken(otp)
+        validateIdentifier(channel, identifier)
 
-        val authToken = authTokenRepository.findByChannelAndTokenHashAndUsedAtIsNull(channel, hashedOtp)
-            ?: throw InvalidOtpException("Invalid or expired OTP")
+        val normalizedId = normalizeIdentifier(channel, identifier)
+        val hashedOtp = jwtService.hashToken(otp)
+        val identifierHash = jwtService.hashToken(normalizedId)
+
+        val authToken = authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+            channel, hashedOtp, identifierHash
+        ) ?: throw InvalidOtpException("Invalid or expired OTP")
 
         if (authToken.expiresAt.isBefore(Instant.now())) {
             throw InvalidOtpException("OTP has expired")
@@ -260,6 +283,29 @@ class AuthService(
                 }
             }
             else -> throw IllegalArgumentException("Channel must be 'sms' or 'email'")
+        }
+    }
+
+    /**
+     * Normalizes an identifier for consistent hashing across request and verify flows.
+     *
+     * Ensures the same phone/email always produces the same SHA-256 hash regardless
+     * of casing or whitespace in the original input:
+     * - **Email:** lowercased and trimmed (e.g., " User@Example.COM " → "user@example.com")
+     * - **Phone:** trimmed only (already in E.164 format from [validateIdentifier])
+     *
+     * This normalization is applied in both [requestOtp] and [verifyOtp] before hashing,
+     * so the identifier hash stored on the token always matches the hash computed during
+     * verification for the same logical identity.
+     *
+     * @param channel "sms" or "email".
+     * @param identifier The raw phone or email from the request.
+     * @return The normalized identifier string, ready for hashing.
+     */
+    private fun normalizeIdentifier(channel: String, identifier: String): String {
+        return when (channel) {
+            "email" -> identifier.lowercase().trim()
+            else -> identifier.trim()
         }
     }
 }

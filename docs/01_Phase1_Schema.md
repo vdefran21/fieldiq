@@ -55,14 +55,19 @@ CREATE TABLE team_members (
 );
 
 -- OTP / magic link tokens for passwordless auth
+-- token_hash is NOT unique: 6-digit OTPs have a small keyspace and collisions
+-- are expected (especially with the dev bypass "000000"). See V4 migration.
+-- identifier_hash binds each token to the phone/email that requested it,
+-- preventing cross-identity token consumption. See V5 migration.
 CREATE TABLE auth_tokens (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID REFERENCES users(id),
-    token_hash  VARCHAR(255) NOT NULL UNIQUE,
-    channel     VARCHAR(10) NOT NULL CHECK (channel IN ('sms','email')),
-    expires_at  TIMESTAMPTZ NOT NULL,
-    used_at     TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id          UUID REFERENCES users(id),
+    token_hash       VARCHAR(255) NOT NULL,
+    identifier_hash  VARCHAR(64) NOT NULL,    -- SHA-256 of normalized phone/email
+    channel          VARCHAR(10) NOT NULL CHECK (channel IN ('sms','email')),
+    expires_at       TIMESTAMPTZ NOT NULL,
+    used_at          TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Refresh tokens for session management (hashed, rotatable)
@@ -301,3 +306,23 @@ CREATE INDEX idx_otp_rate_limits_identifier ON otp_rate_limits(identifier, windo
 - Max 10 OTP requests per phone/email per 24 hours
 - After 5 failed verification attempts, block for 1 hour
 - Dev bypass: `+1555*` numbers are exempt
+
+---
+
+## Auth Token Hardening (`V4`, `V5`)
+
+**V4 (`V4__drop_auth_token_hash_unique.sql`):** Dropped the `UNIQUE` constraint on
+`auth_tokens.token_hash`. 6-digit OTPs have a small keyspace and the dev bypass
+always produces the same hash, so collisions are expected. Added a partial index
+on `(channel, token_hash) WHERE used_at IS NULL` for verification lookups.
+
+**V5 (`V5__auth_token_identifier_binding.sql`):** Added `identifier_hash VARCHAR(64) NOT NULL`
+to `auth_tokens`. Each token now stores a SHA-256 hash of the normalized identifier
+(phone or email) that requested it. The verification lookup query includes
+`identifier_hash`, preventing a valid OTP for one identity from being consumed by
+a different identity on the same channel. The V4 partial index was replaced with
+`(channel, token_hash, identifier_hash) WHERE used_at IS NULL` to match the new
+3-column query pattern.
+
+See `docs/02_Phase1_Auth_Calendar.md` for the full auth flow and identifier binding
+security details.

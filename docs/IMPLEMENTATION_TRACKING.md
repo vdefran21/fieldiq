@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-06 (session 3 — Sprint 2 KDoc complete)
+**Last updated:** 2026-03-06 (session 4 — OTP identifier binding security fix)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -64,6 +64,9 @@
 | ✅ | 02 | OTP rate limiting — Redis-backed (3/15min, 10/24h per identifier) | `OtpRateLimitService.kt`, `RedisConfig.kt` |
 | ✅ | 02 | OTP rate limiting — DB persistence for audit | `OtpRateLimitService.recordAttempt()` → `otp_rate_limits` |
 | ✅ | 02 | Dev OTP bypass for `+1555*` phone numbers | `AuthService.requestOtp()` + `OtpRateLimitService.isDevBypass()` |
+| ✅ | 01 | V4 migration — drop UNIQUE on auth_tokens.token_hash | `V4__drop_auth_token_hash_unique.sql` — 6-digit OTP keyspace causes collisions |
+| ✅ | 01,02 | V5 migration — bind OTP tokens to identifier hash | `V5__auth_token_identifier_binding.sql` — adds `identifier_hash` column, prevents cross-identity token consumption. `AuthService.normalizeIdentifier()` + `JwtService.hashToken()` for PII-safe binding. 5 new security tests. |
+| ✅ | 02 | Input validation on `verifyOtp` | `AuthService.verifyOtp()` now calls `validateIdentifier()` before DB lookup |
 
 ### Team & Member CRUD
 | Status | Doc | Task | Evidence / Notes |
@@ -93,11 +96,11 @@
 ### Testing
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ✅ | 07 | Unit tests for AuthService | `AuthServiceTest.kt` — 16 tests (OTP request/verify, refresh rotation, logout) |
+| ✅ | 07 | Unit tests for AuthService | `AuthServiceTest.kt` — 24 tests (OTP request/verify, refresh rotation, logout, identifier binding security) |
 | ✅ | 07 | Unit tests for TeamService | `TeamServiceTest.kt` — 10 tests (create, get, addMember, getMembers) |
 | ✅ | 07 | Unit tests for EventService | `EventServiceTest.kt` — 12 tests (create, list, update, RSVP upsert, responses) |
 | ✅ | 07 | Unit tests for AvailabilityWindowService | `AvailabilityWindowServiceTest.kt` — 10 tests (create, validate, query, delete) + `JwtServiceTest.kt` (10), `OtpRateLimitServiceTest.kt` (11). Total: 87/87 passing |
-| ✅ | 07 | Comprehensive KDoc on all 6 test files | All test classes, nested classes, test methods, and properties fully documented per CLAUDE.md standards. `@see` cross-references, security rationale, edge case explanations. 87/87 tests still passing after KDoc. |
+| ✅ | 07 | Comprehensive KDoc on all 6 test files | All test classes, nested classes, test methods, and properties fully documented per CLAUDE.md standards. `@see` cross-references, security rationale, edge case explanations. 92/92 tests passing (87 original + 5 new identifier binding tests). |
 
 ---
 
@@ -248,11 +251,11 @@
 | Sprint | Name | Status | Tasks Done | Tasks Total |
 |--------|------|--------|------------|-------------|
 | 1 | Foundation | ✅ Complete | 23/23 | 23 |
-| 2 | Core CRUD + Auth | ✅ Complete | 21/21 | 21 |
+| 2 | Core CRUD + Auth | ✅ Complete | 24/24 | 24 |
 | 3 | Scheduling + Calendar Sync | ⬜ Not Started | 0/14 | 14 |
 | 4 | Negotiation Protocol v1 | ⬜ Not Started | 0/18 | 18 |
 | 5 | React Native App | ⬜ Not Started | 0/10 | 10 |
 | 6 | Negotiation UX + Notifications | ⬜ Not Started | 0/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
 | 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **44/104** | **104** |
+| **Total** | | | **47/107** | **107** |

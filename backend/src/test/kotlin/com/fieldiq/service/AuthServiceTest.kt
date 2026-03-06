@@ -24,10 +24,12 @@ import java.util.*
  * Verifies the four public operations of [AuthService]:
  * 1. **OTP request** — input validation, rate limit delegation, OTP generation (random
  *    for production, deterministic "000000" for dev `+1555*` numbers), hashing via
- *    [JwtService.hashToken], and persistence to the `auth_tokens` table.
- * 2. **OTP verification** — hash-based lookup in `auth_tokens`, expiration enforcement,
- *    token consumption (marking `usedAt`), find-or-create user (auto sign-up), and
- *    issuance of JWT access + refresh token pair.
+ *    [JwtService.hashToken], and persistence to the `auth_tokens` table with identifier
+ *    hash binding.
+ * 2. **OTP verification** — hash-based lookup in `auth_tokens` by (channel, tokenHash,
+ *    identifierHash), expiration enforcement, token consumption (marking `usedAt`),
+ *    find-or-create user (auto sign-up), and issuance of JWT access + refresh token pair.
+ *    Includes identifier binding tests that verify cross-identity token consumption is blocked.
  * 3. **Token refresh** — hash-based lookup of refresh tokens, revocation of the old token,
  *    issuance of a new token pair (rotation), with rejection of revoked or expired tokens.
  * 4. **Logout** — revocation of a refresh token, with idempotent handling of already-revoked
@@ -110,10 +112,12 @@ class AuthServiceTest {
      * Validates the OTP request pipeline: input validation (phone format, email format,
      * channel validity), rate limit delegation to [OtpRateLimitService], OTP generation
      * (random 6-digit for production, deterministic "000000" for dev numbers), SHA-256
-     * hashing, and persistence to the `auth_tokens` table.
+     * hashing, identifier binding via normalized identifier hash, and persistence to the
+     * `auth_tokens` table.
      *
      * **Critical security properties tested:**
      * - Only hashed OTPs are stored; raw OTPs are never persisted
+     * - Each token stores a hash of the normalized identifier it was requested for
      * - Rate limits are checked BEFORE generating/storing an OTP
      * - Invalid input formats are rejected with [IllegalArgumentException]
      * - [RateLimitExceededException] propagates cleanly to the controller layer
@@ -127,8 +131,9 @@ class AuthServiceTest {
          *
          * Verifies that:
          * 1. The auth token is saved with `channel = "sms"` (the OTP is hashed before storage)
-         * 2. Rate limit is checked for the exact identifier (phone number)
-         * 3. The attempt is recorded for audit purposes
+         * 2. The auth token includes a non-empty `identifierHash` binding it to the phone
+         * 3. Rate limit is checked for the exact identifier (phone number)
+         * 4. The attempt is recorded for audit purposes
          */
         @Test
         fun `should generate and store hashed OTP for valid phone`() {
@@ -136,7 +141,11 @@ class AuthServiceTest {
 
             authService.requestOtp("sms", "+12025551234")
 
-            verify { authTokenRepository.save(match { it.channel == "sms" }) }
+            verify {
+                authTokenRepository.save(match {
+                    it.channel == "sms" && it.identifierHash.isNotEmpty()
+                })
+            }
             verify { rateLimitService.checkRateLimit("+12025551234") }
             verify { rateLimitService.recordAttempt("+12025551234") }
         }
@@ -144,8 +153,9 @@ class AuthServiceTest {
         /**
          * Happy path for email channel: a valid email address triggers the full pipeline.
          *
-         * Verifies that the auth token is saved with `channel = "email"`, confirming
-         * that the email OTP flow uses the same storage mechanism as SMS.
+         * Verifies that the auth token is saved with `channel = "email"` and a non-empty
+         * `identifierHash`, confirming that the email OTP flow uses the same storage
+         * mechanism and identifier binding as SMS.
          */
         @Test
         fun `should generate and store hashed OTP for valid email`() {
@@ -153,7 +163,51 @@ class AuthServiceTest {
 
             authService.requestOtp("email", "user@example.com")
 
-            verify { authTokenRepository.save(match { it.channel == "email" }) }
+            verify {
+                authTokenRepository.save(match {
+                    it.channel == "email" && it.identifierHash.isNotEmpty()
+                })
+            }
+        }
+
+        /**
+         * Identifier hash binding: the stored token must contain the SHA-256 hash of
+         * the normalized identifier, computed via [JwtService.hashToken].
+         *
+         * With the `"hashed_${input}"` mock, the identifier hash for phone "+12025551234"
+         * (already normalized — phone is E.164) should be `"hashed_+12025551234"`.
+         */
+        @Test
+        fun `should store identifier hash on auth token`() {
+            every { rateLimitService.checkRateLimit(any()) } just Runs
+
+            authService.requestOtp("sms", "+12025551234")
+
+            verify {
+                authTokenRepository.save(match {
+                    it.identifierHash == "hashed_+12025551234"
+                })
+            }
+        }
+
+        /**
+         * Email identifier normalization: email addresses are lowercased before hashing,
+         * so the stored identifier hash is case-insensitive.
+         *
+         * "User@Example.COM" is normalized to "user@example.com" before hashing,
+         * producing `"hashed_user@example.com"` with the mock.
+         */
+        @Test
+        fun `should normalize email before hashing identifier`() {
+            every { rateLimitService.checkRateLimit(any()) } just Runs
+
+            authService.requestOtp("email", "User@Example.COM")
+
+            verify {
+                authTokenRepository.save(match {
+                    it.identifierHash == "hashed_user@example.com"
+                })
+            }
         }
 
         /**
@@ -237,15 +291,19 @@ class AuthServiceTest {
     /**
      * Tests for [AuthService.verifyOtp].
      *
-     * Validates the OTP verification pipeline: hash-based token lookup, expiration
-     * enforcement, token consumption (setting `usedAt`), user resolution (find existing
-     * or auto-create), and JWT + refresh token issuance.
+     * Validates the OTP verification pipeline: input validation, identifier normalization
+     * and hashing, hash-based token lookup by (channel, tokenHash, identifierHash),
+     * expiration enforcement, token consumption (setting `usedAt`), user resolution
+     * (find existing or auto-create), and JWT + refresh token issuance.
      *
      * **Critical security properties tested:**
      * - OTP is hashed before lookup (never compared in plaintext)
+     * - Identifier is normalized, hashed, and included in the lookup query
+     * - A valid OTP for one identifier cannot be used with a different identifier
      * - Expired tokens are rejected even if the hash matches
      * - Used tokens cannot be reused (lookup filters on `usedAt IS NULL`)
      * - Email normalization ensures case-insensitive matching
+     * - Invalid identifier formats are rejected before any DB lookup
      */
     @Nested
     @DisplayName("verifyOtp")
@@ -265,10 +323,15 @@ class AuthServiceTest {
         fun `should return auth response for valid OTP`() {
             val authToken = AuthToken(
                 tokenHash = "hashed_123456",
+                identifierHash = "hashed_+12025551234",
                 channel = "sms",
                 expiresAt = Instant.now().plus(5, ChronoUnit.MINUTES),
             )
-            every { authTokenRepository.findByChannelAndTokenHashAndUsedAtIsNull("sms", any()) } returns authToken
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    "sms", "hashed_123456", "hashed_+12025551234"
+                )
+            } returns authToken
             every { userRepository.findByPhone("+12025551234") } returns testUser
 
             val response = authService.verifyOtp("sms", "+12025551234", "123456")
@@ -295,10 +358,15 @@ class AuthServiceTest {
         fun `should create new user if not found during verify (auto sign-up)`() {
             val authToken = AuthToken(
                 tokenHash = "hashed_123456",
+                identifierHash = "hashed_+12025551234",
                 channel = "sms",
                 expiresAt = Instant.now().plus(5, ChronoUnit.MINUTES),
             )
-            every { authTokenRepository.findByChannelAndTokenHashAndUsedAtIsNull("sms", any()) } returns authToken
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    "sms", "hashed_123456", "hashed_+12025551234"
+                )
+            } returns authToken
             every { userRepository.findByPhone("+12025551234") } returns null
             every { userRepository.save(any()) } returns testUser
 
@@ -309,15 +377,20 @@ class AuthServiceTest {
         }
 
         /**
-         * Invalid OTP: when no auth token matches the channel + hash combination
-         * (and hasn't been used), the service throws [InvalidOtpException].
+         * Invalid OTP: when no auth token matches the (channel, tokenHash, identifierHash)
+         * triple (and hasn't been used), the service throws [InvalidOtpException].
          *
-         * This covers both wrong OTP codes and OTPs that were already consumed.
+         * This covers wrong OTP codes, OTPs that were already consumed, and OTPs
+         * submitted with a different identifier than the one that requested them.
          * The controller maps this to HTTP 401.
          */
         @Test
         fun `should throw InvalidOtpException for non-existent token`() {
-            every { authTokenRepository.findByChannelAndTokenHashAndUsedAtIsNull(any(), any()) } returns null
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    any(), any(), any()
+                )
+            } returns null
 
             assertThrows(InvalidOtpException::class.java) {
                 authService.verifyOtp("sms", "+12025551234", "999999")
@@ -328,17 +401,22 @@ class AuthServiceTest {
          * Expired OTP: an auth token whose `expiresAt` is in the past must be rejected
          * even if the hash matches and the token hasn't been used.
          *
-         * OTPs expire after 5 minutes in production. This test uses a token expired
+         * OTPs expire after 10 minutes in production. This test uses a token expired
          * 1 hour ago to ensure the expiration check is robust.
          */
         @Test
         fun `should throw InvalidOtpException for expired token`() {
             val expired = AuthToken(
                 tokenHash = "hashed_123456",
+                identifierHash = "hashed_+12025551234",
                 channel = "sms",
                 expiresAt = Instant.now().minus(1, ChronoUnit.HOURS), // expired
             )
-            every { authTokenRepository.findByChannelAndTokenHashAndUsedAtIsNull("sms", any()) } returns expired
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    "sms", "hashed_123456", "hashed_+12025551234"
+                )
+            } returns expired
 
             assertThrows(InvalidOtpException::class.java) {
                 authService.verifyOtp("sms", "+12025551234", "123456")
@@ -346,26 +424,126 @@ class AuthServiceTest {
         }
 
         /**
-         * Email normalization: email identifiers are lowercased before user lookup
-         * to ensure case-insensitive matching.
+         * Email normalization: email identifiers are lowercased before both hashing
+         * (for identifier binding) and user lookup (for case-insensitive matching).
          *
          * A user who registered as "user@example.com" must be found even if the OTP
-         * verification request sends "User@Example.com". This prevents duplicate user
-         * creation due to email casing differences.
+         * verification request sends "User@Example.com". The identifier hash must also
+         * match — both requestOtp and verifyOtp normalize to lowercase before hashing.
          */
         @Test
         fun `should normalize email to lowercase for user lookup`() {
             val authToken = AuthToken(
                 tokenHash = "hashed_123456",
+                identifierHash = "hashed_user@example.com",
                 channel = "email",
                 expiresAt = Instant.now().plus(5, ChronoUnit.MINUTES),
             )
-            every { authTokenRepository.findByChannelAndTokenHashAndUsedAtIsNull("email", any()) } returns authToken
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    "email", "hashed_123456", "hashed_user@example.com"
+                )
+            } returns authToken
             every { userRepository.findByEmail("user@example.com") } returns testUser
 
             authService.verifyOtp("email", "User@Example.com", "123456")
 
             verify { userRepository.findByEmail("user@example.com") }
+        }
+
+        /**
+         * Identifier mismatch rejection: a valid OTP requested for phone A must not
+         * be consumable when submitted with phone B.
+         *
+         * This is the core security property of identifier binding. The repository
+         * query includes the identifier hash, so a mismatch means no token is found.
+         * The service throws [InvalidOtpException] (mapped to HTTP 401).
+         *
+         * Scenario: OTP "000000" was requested for +15551111111 (token stored with
+         * identifierHash = "hashed_+15551111111"). Attacker submits the same OTP
+         * with +15559999999 → identifierHash = "hashed_+15559999999" → no match → 401.
+         */
+        @Test
+        fun `should reject OTP when identifier does not match token`() {
+            // Token was created for phone A
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    "sms", "hashed_000000", "hashed_+15559999999"
+                )
+            } returns null
+
+            assertThrows(InvalidOtpException::class.java) {
+                authService.verifyOtp("sms", "+15559999999", "000000")
+            }
+        }
+
+        /**
+         * Dev bypass scoping: two `+1555*` phone numbers both produce the same OTP
+         * hash (hash("000000")), but each token is bound to its own identifier hash.
+         *
+         * Phone A (+15551111111) and Phone B (+15559999999) both request OTPs and get
+         * "000000". The tokens have the same tokenHash but different identifierHashes.
+         * Each can only be verified by its own phone number.
+         *
+         * This test verifies that the repository is queried with the correct
+         * identifier hash for each phone, and that using Phone B's identifier
+         * against Phone A's token returns no match.
+         */
+        @Test
+        fun `should scope dev bypass OTP to specific phone number`() {
+            // Token exists for phone A
+            val tokenForPhoneA = AuthToken(
+                tokenHash = "hashed_000000",
+                identifierHash = "hashed_+15551111111",
+                channel = "sms",
+                expiresAt = Instant.now().plus(5, ChronoUnit.MINUTES),
+            )
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    "sms", "hashed_000000", "hashed_+15551111111"
+                )
+            } returns tokenForPhoneA
+            every { userRepository.findByPhone("+15551111111") } returns User(phone = "+15551111111")
+
+            // Phone A can verify its own OTP
+            val response = authService.verifyOtp("sms", "+15551111111", "000000")
+            assertNotNull(response)
+
+            // Phone B tries to use the same OTP code — different identifier hash → no match
+            every {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    "sms", "hashed_000000", "hashed_+15559999999"
+                )
+            } returns null
+
+            assertThrows(InvalidOtpException::class.java) {
+                authService.verifyOtp("sms", "+15559999999", "000000")
+            }
+        }
+
+        /**
+         * Input validation on verify: malformed identifiers are rejected before any
+         * database lookup occurs.
+         *
+         * Previously, [AuthService.validateIdentifier] was only called in [AuthService.requestOtp].
+         * Now it is also called in [AuthService.verifyOtp] to reject bad input early.
+         */
+        @Test
+        fun `should reject invalid identifier format on verify`() {
+            assertThrows(IllegalArgumentException::class.java) {
+                authService.verifyOtp("sms", "not-a-phone", "123456")
+            }
+
+            assertThrows(IllegalArgumentException::class.java) {
+                authService.verifyOtp("email", "not-an-email", "123456")
+            }
+
+            // Verify no DB lookup was attempted
+            verify(exactly = 0) {
+                authTokenRepository.findFirstByChannelAndTokenHashAndIdentifierHashAndUsedAtIsNullOrderByCreatedAtDesc(
+                    any(), any(), any()
+                )
+            }
         }
     }
 
