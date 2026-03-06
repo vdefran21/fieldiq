@@ -21,6 +21,11 @@ The docs are the source of truth for expected behavior — not the tests, and no
 
 When running in "bypass permissions" or "auto accept edits" modes, be sure to stop at reasonable intervals for user review and potential commit events.
 
+### DO NOT
+ - kill processes (pids)
+ - attempt to run the application yourself
+   - if you need the application running, notify the user what needs to be running and in what capacity
+
 ## Project Overview
 
 FieldIQ is an AI-powered youth sports management platform. The core differentiator is a **cross-team scheduling negotiation protocol** — two FieldIQ instances autonomously negotiate game times between teams on different instances.
