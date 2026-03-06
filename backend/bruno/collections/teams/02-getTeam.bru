@@ -1,0 +1,39 @@
+meta {
+  name: 02-getTeam
+  type: http
+  seq: 2
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/teams/{{teamId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{teamId}}
+  res.body.name: isString
+}
+
+tests {
+  const { expect } = require('chai');
+  test('team has sport field', () => {
+    expect(res.body).to.have.property('sport');
+  });
+}

@@ -1,0 +1,43 @@
+meta {
+  name: 03-listTeams
+  type: http
+  seq: 3
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    await ensureTeam();
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/teams
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  const { expect } = require('chai');
+  test('returns at least one team', () => {
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+  test('each team has required fields', () => {
+    res.body.forEach(team => {
+      expect(team).to.have.property('id');
+      expect(team).to.have.property('name');
+    });
+  });
+}

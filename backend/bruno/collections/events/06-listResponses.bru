@@ -1,0 +1,31 @@
+meta {
+  name: 06-listResponses
+  type: http
+  seq: 6
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, ensureEvent } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    await ensureEvent(team.id);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/events/{{eventId}}/responses
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}

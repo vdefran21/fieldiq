@@ -1,0 +1,32 @@
+meta {
+  name: 05-listTeamAvailability
+  type: http
+  seq: 5
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, ensureAvailability } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+    await ensureAvailability();
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/teams/{{teamId}}/availability
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}

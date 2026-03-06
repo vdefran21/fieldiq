@@ -1,0 +1,22 @@
+meta {
+  name: 01-requestOtp
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/auth/request-otp
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "channel": "sms",
+    "value": "{{devPhone}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}

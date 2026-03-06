@@ -1,0 +1,35 @@
+meta {
+  name: 02-registerDevice
+  type: http
+  seq: 2
+}
+
+script:pre-request {
+  const { loginAs } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/users/me/devices
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {
+    "expoPushToken": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+    "platform": "ios"
+  }
+}
+
+assert {
+  res.status: eq 200
+}

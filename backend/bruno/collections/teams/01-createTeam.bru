@@ -1,0 +1,57 @@
+meta {
+  name: 01-createTeam
+  type: http
+  seq: 1
+}
+
+script:pre-request {
+  const { loginAs } = require('./scripts/test-helpers.js');
+  const { getCreateTeamBody } = require('./scripts/resource-utils.js');
+  try {
+    await loginAs('manager-a');
+    const body = getCreateTeamBody();
+    bru.setVar('requestBody', JSON.stringify(body));
+    bru.setVar('teamName', body.name);
+    bru.setVar('teamSport', body.sport);
+    bru.setVar('teamAgeGroup', body.ageGroup);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/teams
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 201
+  res.body.id: isString
+  res.body.name: eq {{teamName}}
+  res.body.sport: eq {{teamSport}}
+}
+
+tests {
+  const { expect } = require('chai');
+  test('team has expected fields', () => {
+    expect(res.body).to.have.property('id');
+    expect(res.body).to.have.property('name');
+    expect(res.body).to.have.property('sport');
+  });
+}
+
+script:post-response {
+  if (res.body.id) {
+    bru.setVar('teamId', res.body.id);
+    bru.setVar('latestTeamId', res.body.id);
+  }
+}

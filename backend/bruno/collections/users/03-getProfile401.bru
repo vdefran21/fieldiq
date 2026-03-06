@@ -1,0 +1,19 @@
+meta {
+  name: 03-getProfile401
+  type: http
+  seq: 3
+}
+
+docs {
+  Verifies that an unauthenticated request to /users/me returns 401.
+}
+
+get {
+  url: {{baseUrl}}/users/me
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 401
+}

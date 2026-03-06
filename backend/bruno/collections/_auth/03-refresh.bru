@@ -1,0 +1,38 @@
+meta {
+  name: 03-refresh
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refreshToken": "{{refreshToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.accessToken: isString
+  res.body.refreshToken: isString
+}
+
+tests {
+  const { expect } = require('chai');
+  test('new tokens differ from old', () => {
+    const oldRefresh = bru.getVar('refreshToken');
+    expect(res.body.refreshToken).to.not.equal(oldRefresh);
+  });
+}
+
+script:post-response {
+  if (res.body.accessToken) {
+    bru.setVar('accessToken', res.body.accessToken);
+    bru.setVar('refreshToken', res.body.refreshToken);
+  }
+}

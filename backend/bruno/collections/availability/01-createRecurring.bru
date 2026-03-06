@@ -1,0 +1,67 @@
+meta {
+  name: 01-createRecurring
+  type: http
+  seq: 1
+}
+
+docs {
+  Creates a recurring availability window (every Saturday 2-4pm).
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+    const body = {
+      teamId: team.id,
+      dayOfWeek: 6,
+      startTime: '14:00',
+      endTime: '16:00',
+      windowType: 'available',
+    };
+    bru.setVar('requestBody', JSON.stringify(body));
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/users/me/availability
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 201
+  res.body.id: isString
+  res.body.dayOfWeek: eq 6
+  res.body.windowType: eq available
+}
+
+tests {
+  const { expect } = require('chai');
+  test('recurring window has no specificDate', () => {
+    expect(res.body.specificDate).to.be.null;
+  });
+  test('time range is correct', () => {
+    expect(res.body.startTime).to.equal('14:00');
+    expect(res.body.endTime).to.equal('16:00');
+  });
+}
+
+script:post-response {
+  if (res.body.id) {
+    bru.setVar('availabilityId', res.body.id);
+    bru.setVar('latestAvailabilityId', res.body.id);
+  }
+}

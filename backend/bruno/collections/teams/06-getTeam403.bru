@@ -1,0 +1,49 @@
+meta {
+  name: 06-getTeam403
+  type: http
+  seq: 6
+}
+
+docs {
+  Verifies that a user who is NOT a member of a team gets a 403 Forbidden
+  when trying to access it. Creates a team as manager-a, then switches
+  to coach (who has not been added to the team).
+}
+
+script:pre-request {
+  const { loginAs, createTeamWith, switchUser } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    // Create a fresh team (don't reuse, to ensure coach is not a member)
+    const resp = await createTeamWith({ name: 'Private Team' });
+    bru.setVar('privateTeamId', resp.data.id);
+    // Switch to a user who is NOT a member
+    await switchUser('coach');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/teams/{{privateTeamId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 403
+  res.body: isJson
+}
+
+tests {
+  const { expect } = require('chai');
+  test('error response has expected shape', () => {
+    expect(res.body).to.have.property('error');
+    expect(res.body).to.have.property('message');
+    expect(res.body).to.have.property('status');
+  });
+}

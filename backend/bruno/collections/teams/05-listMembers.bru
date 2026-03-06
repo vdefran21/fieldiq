@@ -1,0 +1,44 @@
+meta {
+  name: 05-listMembers
+  type: http
+  seq: 5
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/teams/{{teamId}}/members
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  const { expect } = require('chai');
+  test('has at least one member (the creator)', () => {
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+  test('each member has role', () => {
+    res.body.forEach(m => {
+      expect(m).to.have.property('role');
+      expect(['manager', 'coach', 'parent']).to.include(m.role);
+    });
+  });
+}

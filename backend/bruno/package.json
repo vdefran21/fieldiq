@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "@usebruno/cli": "3.0.2",
+    "@faker-js/faker": "^9.6.0",
+    "axios": "^1.8.4"
+  },
+  "scripts": {
+    "test": "bru run --sandbox=developer --reporter-html ./results/output.html --reporter-json ./results/output.json",
+    "test:instance-a": "bru run --env instance-a --sandbox=developer --reporter-html ./results/output.html --reporter-json ./results/output.json",
+    "test:instance-b": "bru run --env instance-b --sandbox=developer --reporter-html ./results/output.html --reporter-json ./results/output.json"
+  }
+}

@@ -1,0 +1,37 @@
+meta {
+  name: 01-getProfile
+  type: http
+  seq: 1
+}
+
+script:pre-request {
+  const { loginAs } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/users/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: isString
+}
+
+tests {
+  const { expect } = require('chai');
+  test('user profile has expected fields', () => {
+    expect(res.body).to.have.property('id');
+    expect(res.body).to.have.property('phone');
+  });
+}

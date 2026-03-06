@@ -1,0 +1,46 @@
+meta {
+  name: 03-listEvents
+  type: http
+  seq: 3
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, ensureEvent } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+    await ensureEvent(team.id);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/teams/{{teamId}}/events
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  const { expect } = require('chai');
+  test('returns at least one event', () => {
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+  test('each event has required fields', () => {
+    res.body.forEach(e => {
+      expect(e).to.have.property('id');
+      expect(e).to.have.property('eventType');
+      expect(e).to.have.property('status');
+    });
+  });
+}

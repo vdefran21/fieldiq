@@ -1,0 +1,45 @@
+meta {
+  name: 04-listMyAvailability
+  type: http
+  seq: 4
+}
+
+script:pre-request {
+  const { loginAs, ensureAvailability } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    await ensureAvailability();
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/users/me/availability
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+tests {
+  const { expect } = require('chai');
+  test('returns at least one window', () => {
+    expect(res.body.length).to.be.greaterThan(0);
+  });
+  test('each window has required fields', () => {
+    res.body.forEach(w => {
+      expect(w).to.have.property('id');
+      expect(w).to.have.property('windowType');
+      expect(w).to.have.property('startTime');
+      expect(w).to.have.property('endTime');
+    });
+  });
+}

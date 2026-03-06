@@ -1,0 +1,47 @@
+meta {
+  name: 03-createUnavailable
+  type: http
+  seq: 3
+}
+
+docs {
+  Creates an unavailability block (Sundays all day).
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+    const body = {
+      teamId: team.id,
+      dayOfWeek: 0,
+      startTime: '08:00',
+      endTime: '20:00',
+      windowType: 'unavailable',
+    };
+    bru.setVar('requestBody', JSON.stringify(body));
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/users/me/availability
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 201
+  res.body.windowType: eq unavailable
+}

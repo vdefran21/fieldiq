@@ -1,0 +1,67 @@
+meta {
+  name: 04-addMember
+  type: http
+  seq: 4
+}
+
+docs {
+  Creates a second user (parent) and adds them to the team.
+  Requires manager-a to be authenticated (team creator = manager).
+  First authenticates as 'parent' to create that user, then switches
+  back to 'manager-a' to add the parent as a team member.
+}
+
+script:pre-request {
+  const { loginAs, switchUser, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    // Ensure team exists under manager-a
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+
+    // Create the parent user by authenticating as them
+    await switchUser('parent');
+    const parentUserId = bru.getVar('userId');
+    bru.setVar('parentUserId', parentUserId);
+
+    // Switch back to manager to add member
+    await switchUser('manager-a');
+    const body = {
+      userId: parentUserId,
+      role: 'parent',
+      playerName: 'Alex Smith',
+    };
+    bru.setVar('requestBody', JSON.stringify(body));
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/teams/{{teamId}}/members
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 201
+  res.body.role: eq parent
+}
+
+tests {
+  const { expect } = require('chai');
+  test('member has expected fields', () => {
+    expect(res.body).to.have.property('id');
+    expect(res.body).to.have.property('teamId');
+    expect(res.body).to.have.property('userId');
+    expect(res.body.playerName).to.equal('Alex Smith');
+  });
+}

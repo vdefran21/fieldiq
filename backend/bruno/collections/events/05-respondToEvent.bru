@@ -1,0 +1,47 @@
+meta {
+  name: 05-respondToEvent
+  type: http
+  seq: 5
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, ensureEvent } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    await ensureEvent(team.id);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/events/{{eventId}}/respond
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {
+    "status": "going"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq going
+}
+
+tests {
+  const { expect } = require('chai');
+  test('RSVP response has expected fields', () => {
+    expect(res.body).to.have.property('id');
+    expect(res.body).to.have.property('eventId');
+    expect(res.body).to.have.property('userId');
+    expect(res.body).to.have.property('respondedAt');
+  });
+}

@@ -1,0 +1,43 @@
+meta {
+  name: 02-verifyOtp
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/auth/verify-otp
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "channel": "sms",
+    "value": "{{devPhone}}",
+    "otp": "{{devOtp}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.accessToken: isString
+  res.body.refreshToken: isString
+  res.body.expiresIn: isNumber
+  res.body.user.id: isString
+}
+
+tests {
+  const { expect } = require('chai');
+  test('user object has expected fields', () => {
+    expect(res.body.user).to.have.property('id');
+    expect(res.body.user).to.have.property('phone');
+  });
+}
+
+script:post-response {
+  if (res.body.accessToken) {
+    bru.setVar('accessToken', res.body.accessToken);
+    bru.setVar('refreshToken', res.body.refreshToken);
+    bru.setVar('userId', res.body.user.id);
+  }
+}

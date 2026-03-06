@@ -1,0 +1,53 @@
+meta {
+  name: 02-createDraftEvent
+  type: http
+  seq: 2
+}
+
+docs {
+  Creates an event without startsAt/endsAt, which should result in a draft event.
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+    const body = {
+      eventType: 'practice',
+      title: 'Midweek Practice',
+      location: 'Community Field',
+    };
+    bru.setVar('requestBody', JSON.stringify(body));
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/teams/{{teamId}}/events
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 201
+  res.body.eventType: eq practice
+  res.body.status: eq draft
+}
+
+tests {
+  const { expect } = require('chai');
+  test('draft event has no start time', () => {
+    expect(res.body.startsAt).to.be.null;
+  });
+}

@@ -1,0 +1,8 @@
+{
+  "version": "1",
+  "name": "FieldIQ API Tests",
+  "type": "collection",
+  "environmentsDir": "environments",
+  "defaultEnv": "instance-a",
+  "ignore": ["node_modules", ".git", "results"]
+}
