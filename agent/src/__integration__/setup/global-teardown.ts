@@ -1,4 +1,5 @@
 import { close } from '../../db';
+import { closeTestSqsClient } from './test-sqs';
 
 /**
  * Jest global teardown for integration tests.
@@ -7,5 +8,6 @@ import { close } from '../../db';
  * dangling connections after the test suite completes.
  */
 export default async function globalTeardown(): Promise<void> {
+  closeTestSqsClient();
   await close();
 }

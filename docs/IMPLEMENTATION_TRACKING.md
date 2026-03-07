@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-07 (session 8 — Sprint 3 complete, agent integration tests + task-dispatcher refactor)
+**Last updated:** 2026-03-07 (session 9 — Sprint 3 agent integration test fixes verified)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -128,11 +128,11 @@
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
 | ✅ | 05 | Agent layer project setup (`agent/package.json`, `tsconfig.json`) | `agent/package.json`, `agent/tsconfig.json`, `agent/jest.config.js` — TypeScript, Jest, SQS SDK, googleapis, pg. |
-| ✅ | 05 | `calendar-sync.worker.ts` — SQS consumer for `SYNC_CALENDAR` | `agent/src/workers/calendar-sync.worker.ts` + `agent/src/index.ts` SQS polling loop with dispatch. |
+| ✅ | 05 | `calendar-sync.worker.ts` — SQS consumer for `SYNC_CALENDAR` | `agent/src/workers/calendar-sync.worker.ts` + `agent/src/index.ts` SQS polling loop with dispatch. Session 9: fixed `availability_windows` insert projection so `team_id` is included in the VALUES source for specific-date `google_cal` windows. |
 | ✅ | 05 | Google FreeBusy API integration (read-only) | `fetchFreeBusy()` in calendar-sync.worker.ts — queries primary calendar, 30-day look-ahead, filters invalid blocks. |
 | ✅ | 05 | Convert FreeBusy → `availability_windows` (source='google_cal') | `handleSyncCalendar()` — deletes stale windows, inserts fresh ones as `source='google_cal'`, `window_type='unavailable'`. 12 unit tests passing. |
 | ✅ | 07 | Agent runtime refactor: extract `task-dispatcher.ts` from `index.ts` | `task-dispatcher.ts` exports `dispatchTask()`, `processMessage()`, `pollOnce()` with structured `PollResult`. `index.ts` is thin bootstrap with `require.main === module` guard. |
-| ✅ | 07 | Agent integration tests (real Postgres + SQS, mocked Google) | `jest.integration.config.js`, `src/__integration__/` — 6 worker-level tests (calendar-sync) + 3 runtime-level tests (SQS dispatch via `pollOnce()`). Setup: `global-setup.ts` hard-fails if Flyway schema missing. |
+| ✅ | 07 | Agent integration tests (real Postgres + SQS, mocked Google) | `jest.integration.config.js`, `src/__integration__/`, `agent/src/config.ts`, `agent/src/sqs-client.ts`, `agent/src/__integration__/setup/global-setup.ts`, `agent/src/__integration__/setup/global-teardown.ts`, `agent/src/__integration__/setup/test-sqs.ts`, `agent/src/__integration__/calendar-sync.integration.test.ts`, `agent/src/__integration__/sqs-dispatch.integration.test.ts` — 6 worker-level tests (calendar-sync) + 3 runtime-level tests (SQS dispatch via `pollOnce()`). Session 9: added explicit LocalStack credentials to shared SQS client config, destroyed integration SQS clients, closed worker-owned DB pools in `afterAll`, and verified `npm run test:integration` passes with 9/9 tests green and no leaked-handle warning. Session 10: extracted SQS client construction into `agent/src/sqs-client.ts` so runtime bootstrap and test setup share one helper path. Session 11: moved agent task queue URL lookup into the same helper so all SQS client and queue wiring now lives behind `agent/src/sqs-client.ts`. |
 
 ### Scheduling Service
 | Status | Doc | Task | Evidence / Notes |

@@ -1,12 +1,12 @@
 import {
-  SQSClient,
-  SendMessageCommand,
-  PurgeQueueCommand,
-  ReceiveMessageCommand,
-  DeleteMessageCommand,
-  GetQueueAttributesCommand,
+    DeleteMessageCommand,
+    GetQueueAttributesCommand,
+    PurgeQueueCommand,
+    ReceiveMessageCommand,
+    SQSClient,
+    SendMessageCommand,
 } from '@aws-sdk/client-sqs';
-import { config } from '../../config';
+import { createSqsClient, getAgentTasksQueueUrl } from '../../sqs-client';
 
 /**
  * SQS test helpers for integration tests.
@@ -15,12 +15,9 @@ import { config } from '../../config';
  * with the agent's runtime configuration.
  */
 
-const sqsClient = new SQSClient({
-  region: config.aws.region,
-  endpoint: config.aws.endpointUrl,
-});
+const sqsClient = createSqsClient();
 
-const queueUrl = config.aws.sqs.agentTasksQueue;
+const queueUrl = getAgentTasksQueueUrl();
 
 /**
  * Returns the shared SQS client for use in tests that call pollOnce() directly.
@@ -34,6 +31,16 @@ export function getSqsClient(): SQSClient {
  */
 export function getQueueUrl(): string {
   return queueUrl;
+}
+
+/**
+ * Destroys the shared integration-test SQS client.
+ *
+ * Jest keeps Node HTTP handlers alive while the client exists, so teardown must
+ * explicitly destroy it to prevent leaked-handle warnings.
+ */
+export function closeTestSqsClient(): void {
+  sqsClient.destroy();
 }
 
 /**

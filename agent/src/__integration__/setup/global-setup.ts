@@ -1,5 +1,7 @@
+import { GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
 import { Pool } from 'pg';
-import { SQSClient, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
+import { config } from '../../config';
+import { createSqsClient, getAgentTasksQueueUrl } from '../../sqs-client';
 
 /**
  * Jest global setup for integration tests.
@@ -15,7 +17,7 @@ import { SQSClient, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
 export default async function globalSetup(): Promise<void> {
   // 1. Verify Postgres is reachable and Flyway schema exists
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://fieldiq:localdev@localhost:5432/fieldiq',
+    connectionString: config.database.connectionString,
     connectionTimeoutMillis: 5000,
   });
 
@@ -45,13 +47,9 @@ export default async function globalSetup(): Promise<void> {
   }
 
   // 2. Verify LocalStack SQS is reachable and queue exists
-  const sqsEndpoint = process.env.AWS_ENDPOINT_URL || 'http://localhost:4566';
-  const queueUrl = process.env.AGENT_TASKS_QUEUE_URL || 'http://localhost:4566/000000000000/fieldiq-agent-tasks';
+  const queueUrl = getAgentTasksQueueUrl();
 
-  const sqsClient = new SQSClient({
-    region: process.env.AWS_REGION || 'us-east-1',
-    endpoint: sqsEndpoint,
-  });
+  const sqsClient = createSqsClient();
 
   try {
     await sqsClient.send(
@@ -66,6 +64,8 @@ export default async function globalSetup(): Promise<void> {
       'Start infrastructure first: docker compose up -d\n' +
       `Original error: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    sqsClient.destroy();
   }
 
   console.log('Integration test prerequisites verified: Postgres schema ✓, SQS queue ✓');

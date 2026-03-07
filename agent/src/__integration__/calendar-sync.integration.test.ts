@@ -34,20 +34,20 @@ jest.mock('googleapis', () => ({
   },
 }));
 
-import { handleSyncCalendar, SyncCalendarTask } from '../workers/calendar-sync.worker';
 import { google } from 'googleapis';
-import { query } from '../db';
-import {
-  insertOrganization,
-  insertTeam,
-  insertUser,
-  insertCalendarIntegration,
-  insertManualAvailabilityWindow,
-  deleteTestData,
-  getAvailabilityWindows,
-  getCalendarIntegration,
-} from './setup/test-helpers';
+import { close as closeDb, query } from '../db';
+import { handleSyncCalendar, SyncCalendarTask } from '../workers/calendar-sync.worker';
 import { encryptLikeBackend } from './setup/test-encryption';
+import {
+    deleteTestData,
+    getAvailabilityWindows,
+    getCalendarIntegration,
+    insertCalendarIntegration,
+    insertManualAvailabilityWindow,
+    insertOrganization,
+    insertTeam,
+    insertUser,
+} from './setup/test-helpers';
 
 // Test fixture IDs — populated in beforeAll
 let orgId: string;
@@ -65,6 +65,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await deleteTestData({ userIds: [userId], teamIds: [teamId], orgIds: [orgId] });
+  await closeDb();
 });
 
 beforeEach(async () => {

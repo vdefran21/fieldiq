@@ -1,6 +1,7 @@
 import { SQSClient } from '@aws-sdk/client-sqs';
 import { config } from './config';
 import { close as closeDb } from './db';
+import { createSqsClient, getAgentTasksQueueUrl } from './sqs-client';
 import { pollOnce } from './task-dispatcher';
 
 /**
@@ -33,7 +34,7 @@ async function pollLoop(sqsClient: SQSClient): Promise<void> {
     try {
       await pollOnce(
         sqsClient,
-        config.aws.sqs.agentTasksQueue,
+        getAgentTasksQueueUrl(),
         config.worker.waitTimeSeconds,
         config.worker.maxMessages,
       );
@@ -58,15 +59,16 @@ process.on('SIGTERM', () => {
 
 // Start the agent (only when run directly, not when imported for testing)
 if (require.main === module) {
-  const sqsClient = new SQSClient({
-    region: config.aws.region,
-    endpoint: config.aws.endpointUrl,
-  });
+  const sqsClient = createSqsClient();
 
   pollLoop(sqsClient)
-    .then(() => closeDb())
+    .then(() => {
+      sqsClient.destroy();
+      return closeDb();
+    })
     .then(() => console.log('Agent stopped.'))
     .catch((error) => {
+      sqsClient.destroy();
       console.error('Fatal error:', error);
       process.exit(1);
     });

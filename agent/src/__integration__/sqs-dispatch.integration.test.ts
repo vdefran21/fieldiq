@@ -28,19 +28,26 @@ jest.mock('googleapis', () => ({
   },
 }));
 
-import { pollOnce } from '../task-dispatcher';
 import { google } from 'googleapis';
-import { query } from '../db';
-import {
-  insertOrganization,
-  insertTeam,
-  insertUser,
-  insertCalendarIntegration,
-  deleteTestData,
-  getAvailabilityWindows,
-} from './setup/test-helpers';
+import { close as closeDb, query } from '../db';
+import { pollOnce } from '../task-dispatcher';
 import { encryptLikeBackend } from './setup/test-encryption';
-import { sendTask, purgeQueue, getSqsClient, getQueueUrl, getQueueMessageCount } from './setup/test-sqs';
+import {
+    deleteTestData,
+    getAvailabilityWindows,
+    insertCalendarIntegration,
+    insertOrganization,
+    insertTeam,
+    insertUser,
+} from './setup/test-helpers';
+import {
+    closeTestSqsClient,
+    getQueueMessageCount,
+    getQueueUrl,
+    getSqsClient,
+    purgeQueue,
+    sendTask,
+} from './setup/test-sqs';
 
 // Fixture IDs
 let orgId: string;
@@ -58,6 +65,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await deleteTestData({ userIds: [userId], teamIds: [teamId], orgIds: [orgId] });
+  closeTestSqsClient();
+  await closeDb();
 });
 
 beforeEach(async () => {

@@ -1,5 +1,6 @@
 package com.fieldiq.security
 
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Component
 import java.security.SecureRandom
 import java.util.Base64
@@ -79,6 +80,7 @@ class TokenEncryptionConverter(
      *
      * @param properties FieldIQ config containing the encryption key.
      */
+    @Autowired
     constructor(properties: com.fieldiq.config.FieldIQProperties) : this(
         deriveKeyBytes(properties.encryption.tokenKey),
     )

@@ -1,7 +1,7 @@
-import { google, calendar_v3 } from 'googleapis';
+import { google } from 'googleapis';
+import { config } from '../config';
 import { query } from '../db';
 import { decryptToken } from '../encryption';
-import { config } from '../config';
 
 /**
  * SQS task payload for calendar sync operations.
@@ -85,26 +85,9 @@ export async function handleSyncCalendar(
 
   // 6. Insert fresh busy blocks as unavailable windows
   if (busyBlocks.length > 0) {
-    const values: unknown[] = [];
-    const placeholders: string[] = [];
-    let paramIndex = 1;
-
-    for (const block of busyBlocks) {
-      placeholders.push(
-        `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`,
-      );
-      values.push(
-        userId,
-        block.start, // day_of_week not used for specific-date google_cal windows
-        block.end,
-        'google_cal',
-        teamId,
-      );
-    }
-
     // Insert as specific-date unavailable windows
-    // The availability_windows table expects: user_id, start_time, end_time, source, team_id
-    // For Google Calendar busy blocks, we store them as specific-date unavailable windows
+    // The VALUES projection mirrors the INSERT target so each busy block carries
+    // the team_id required by availability_windows.
     await query(
       `INSERT INTO availability_windows (user_id, specific_date, window_type, source, team_id, start_time, end_time)
        SELECT
@@ -118,10 +101,10 @@ export async function handleSyncCalendar(
        FROM (VALUES ${busyBlocks
          .map(
            (_, i) =>
-             `($${i * 3 + 1}, $${i * 3 + 2}::timestamptz, $${i * 3 + 3}::timestamptz)`,
+             `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}::timestamptz, $${i * 4 + 4}::timestamptz)`,
          )
-         .join(', ')}) AS v(user_id, start_ts, end_ts)`,
-      busyBlocks.flatMap((block) => [userId, block.start, block.end]),
+         .join(', ')}) AS v(user_id, team_id, start_ts, end_ts)`,
+      busyBlocks.flatMap((block) => [userId, teamId, block.start, block.end]),
     );
   }
 

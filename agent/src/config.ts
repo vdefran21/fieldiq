@@ -2,6 +2,19 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
+ * AWS credential pair used by the agent when talking to SQS.
+ *
+ * LocalStack still requires signed requests, so integration tests and local
+ * development must provide credentials even though no real AWS account is used.
+ */
+export interface AwsCredentialsConfig {
+  /** Access key used to sign SQS requests. */
+  accessKeyId: string;
+  /** Secret key paired with the access key for request signing. */
+  secretAccessKey: string;
+}
+
+/**
  * Agent layer configuration, loaded from environment variables.
  *
  * All values have sensible defaults for local development (matching the
@@ -13,6 +26,10 @@ export const config = {
   aws: {
     region: process.env.AWS_REGION || 'us-east-1',
     endpointUrl: process.env.AWS_ENDPOINT_URL || 'http://localhost:4566',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+    },
     sqs: {
       agentTasksQueue:
         process.env.AGENT_TASKS_QUEUE_URL ||
@@ -50,3 +67,4 @@ export const config = {
     freeBusyLookAheadDays: 30,
   },
 };
+
