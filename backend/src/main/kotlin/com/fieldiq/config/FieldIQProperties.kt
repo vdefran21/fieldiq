@@ -14,6 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * - `fieldiq.jwt.*` — JWT token generation parameters
  * - `fieldiq.aws.*` — AWS SDK / LocalStack configuration
  * - `fieldiq.google.*` — Google OAuth credentials for calendar integration
+ * - `fieldiq.encryption.*` — encryption keys for sensitive data at rest
  *
  * Activated by [AppConfig] via `@EnableConfigurationProperties`.
  *
@@ -21,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * @property jwt JWT token generation and validation settings.
  * @property aws AWS SDK configuration (SQS queues, endpoint URL for LocalStack).
  * @property google Google OAuth client credentials for Calendar integration.
+ * @property encryption Encryption key configuration for token storage.
  * @see AppConfig for the configuration class that activates these properties.
  */
 @ConfigurationProperties(prefix = "fieldiq")
@@ -29,6 +31,7 @@ data class FieldIQProperties(
     val jwt: JwtProperties,
     val aws: AwsProperties,
     val google: GoogleProperties = GoogleProperties(),
+    val encryption: EncryptionProperties = EncryptionProperties(),
 ) {
 
     /**
@@ -124,5 +127,18 @@ data class FieldIQProperties(
         val clientId: String = "",
         val clientSecret: String = "",
         val redirectUri: String = "",
+    )
+
+    /**
+     * Encryption key configuration for sensitive data stored at rest.
+     *
+     * Used by [com.fieldiq.security.TokenEncryptionConverter] to encrypt/decrypt
+     * Google OAuth tokens in the `calendar_integrations` table using AES-256-GCM.
+     *
+     * @property tokenKey The AES-256 encryption key for OAuth tokens. MUST be exactly
+     *   32 bytes (256 bits) in production. Set via `TOKEN_ENCRYPTION_KEY` env var.
+     */
+    data class EncryptionProperties(
+        val tokenKey: String = "dev-token-encryption-key-change-in-production!32",
     )
 }

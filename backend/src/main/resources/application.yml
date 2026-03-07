@@ -53,3 +53,5 @@ fieldiq:
     client-id: ${GOOGLE_CLIENT_ID:}
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/auth/google/callback}
+  encryption:
+    token-key: ${TOKEN_ENCRYPTION_KEY:dev-token-encryption-key-change-in-production!32}

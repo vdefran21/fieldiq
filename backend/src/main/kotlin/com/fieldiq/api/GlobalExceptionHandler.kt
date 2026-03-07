@@ -1,8 +1,10 @@
 package com.fieldiq.api
 
 import com.fieldiq.api.dto.ErrorResponse
+import com.fieldiq.service.GoogleOAuthException
 import com.fieldiq.service.InvalidOtpException
 import com.fieldiq.service.RateLimitExceededException
+import com.fieldiq.service.RelayException
 import jakarta.persistence.EntityNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -104,6 +106,32 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse("VALIDATION_ERROR", errors, 400))
+    }
+
+    /**
+     * Handles Google OAuth flow failures.
+     *
+     * @return 502 Bad Gateway with error details (the upstream Google API failed).
+     */
+    @ExceptionHandler(GoogleOAuthException::class)
+    fun handleGoogleOAuth(ex: GoogleOAuthException): ResponseEntity<ErrorResponse> {
+        logger.error("Google OAuth error: {}", ex.message)
+        return ResponseEntity
+            .status(HttpStatus.BAD_GATEWAY)
+            .body(ErrorResponse("GOOGLE_OAUTH_ERROR", ex.message ?: "Google OAuth failed", 502))
+    }
+
+    /**
+     * Handles cross-instance relay failures.
+     *
+     * @return 502 Bad Gateway with error details (the remote instance failed).
+     */
+    @ExceptionHandler(RelayException::class)
+    fun handleRelayError(ex: RelayException): ResponseEntity<ErrorResponse> {
+        logger.error("Relay error: {}", ex.message)
+        return ResponseEntity
+            .status(HttpStatus.BAD_GATEWAY)
+            .body(ErrorResponse("RELAY_ERROR", ex.message ?: "Cross-instance relay failed", 502))
     }
 
     /**

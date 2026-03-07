@@ -39,8 +39,8 @@ SPRING_PROFILES_ACTIVE=instance-b ./gradlew bootRun
                                    └─────────┘
 ```
 
-- **Backend (Kotlin Spring Boot):** Owns all scheduling logic, negotiation protocol, auth, and REST/WebSocket APIs.
-- **Agent Layer (Node.js/TypeScript):** Async SQS workers for calendar sync, LLM message drafting (Claude Haiku), and notification dispatch. Does NOT own scheduling.
+- **[Backend](backend/) (Kotlin Spring Boot):** Owns all scheduling logic, negotiation protocol, auth, and REST/WebSocket APIs.
+- **[Agent Layer](agent/) (Node.js/TypeScript):** Async SQS workers for calendar sync, LLM message drafting (Claude Haiku), and notification dispatch. Does NOT own scheduling.
 - **Mobile (React Native Expo):** iOS app with Expo Router. Schedule feed, team roster, negotiation approval screen.
 
 ## Tech Stack
@@ -59,25 +59,17 @@ SPRING_PROFILES_ACTIVE=instance-b ./gradlew bootRun
 
 ```
 fieldiq/
-├── backend/                 Kotlin Spring Boot API
-│   ├── build.gradle.kts
-│   └── src/main/kotlin/com/fieldiq/
-│       ├── config/          Configuration & properties
-│       ├── domain/          JPA entities (10 entities)
-│       ├── repository/      Spring Data JPA repositories
-│       ├── service/         Business logic (TeamAccessGuard, SchedulingService)
-│       ├── api/             REST controllers
-│       ├── negotiation/     Cross-team protocol (core IP)
-│       ├── security/        Auth filters, HMAC validation
-│       └── websocket/       Real-time negotiation updates
-├── agent/                   Node.js/TypeScript SQS workers
+├── backend/                 Kotlin Spring Boot API (see backend/README.md)
+├── agent/                   Node.js/TypeScript SQS workers (see agent/README.md)
 ├── mobile/                  React Native Expo app (iOS)
 ├── shared/types/            TypeScript API contract interfaces
-├── docs/                    Phase 1 implementation plans (00-07)
+├── docs/                    Phase 1 implementation plans (00-08) + tracking
 ├── infra/                   LocalStack init scripts
 ├── docker-compose.yml       Full local dev environment
 └── CLAUDE.md                Architecture decisions & coding standards
 ```
+
+The backend and agent layers have their own READMEs with setup, configuration, testing, and troubleshooting details.
 
 ## Cross-Team Negotiation Protocol
 
@@ -130,9 +122,13 @@ SPRING_PROFILES_ACTIVE=instance-b ./gradlew bootRun
 
 ## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** — Architecture decisions, coding standards, KDoc requirements
-- **[docs/00_Phase1_Overview.md](docs/00_Phase1_Overview.md)** — Phase 1 overview and sprint plan
-- **[docs/01-07](docs/)** — Detailed implementation plans for schema, auth, backend, negotiation, agent, mobile, and CI
+| Document | Purpose |
+|----------|---------|
+| [CLAUDE.md](CLAUDE.md) | Architecture decisions, coding standards, KDoc requirements |
+| [backend/README.md](backend/README.md) | Backend setup, profiles, config, testing, troubleshooting |
+| [agent/README.md](agent/README.md) | Agent setup, env vars, worker responsibilities, troubleshooting |
+| [docs/](docs/) | Phase 1 implementation plans (00–08: schema, auth, backend, negotiation, agent, mobile, CI, architecture) |
+| [docs/IMPLEMENTATION_TRACKING.md](docs/IMPLEMENTATION_TRACKING.md) | Sprint progress tracker |
 
 ## License
 

@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-06 (session 7 — dev.sh backend shutdown persistence fix)
+**Last updated:** 2026-03-07 (session 8 — Sprint 3 complete: relay scaffolding, Google Calendar OAuth, calendar sync agent)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -114,23 +114,23 @@
 
 ---
 
-## Sprint 3 (Weeks 5–6): SCHEDULING + CALENDAR SYNC 🔧
+## Sprint 3 (Weeks 5–6): SCHEDULING + CALENDAR SYNC ✅
 
 ### Google Calendar Integration
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 02 | `GET /auth/google/authorize` — initiate OAuth flow | |
-| ⬜ | 02 | `GET /auth/google/callback` — handle OAuth callback | |
-| ⬜ | 02 | Token encryption (AES-256-GCM via `TokenEncryptionConverter`) | |
-| ⬜ | 02 | Refresh token management for Google tokens | |
+| ✅ | 02 | `GET /auth/google/authorize` — initiate OAuth flow | `GoogleCalendarController.kt` — redirects to Google consent screen with `calendar.readonly` scope, `state=userId` for CSRF prevention. |
+| ✅ | 02 | `GET /auth/google/callback` — handle OAuth callback | `GoogleCalendarController.kt` — exchanges auth code for tokens, encrypts and stores. Handles error/denied cases. |
+| ✅ | 02 | Token encryption (AES-256-GCM via `TokenEncryptionConverter`) | `TokenEncryptionConverter.kt` — AES-256-GCM, random IV per encryption, Base64 output format. 15 unit tests in `TokenEncryptionConverterTest.kt`. |
+| ✅ | 02 | Refresh token management for Google tokens | `GoogleCalendarService.refreshAccessToken()` — decrypts stored refresh token, exchanges for new access token, updates DB. 7 unit tests in `GoogleCalendarServiceTest.kt`. |
 
 ### Calendar Sync Agent Worker
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 05 | Agent layer project setup (`agent/package.json`, `tsconfig.json`) | |
-| ⬜ | 05 | `calendar-sync.worker.ts` — SQS consumer for `SYNC_CALENDAR` | |
-| ⬜ | 05 | Google FreeBusy API integration (read-only) | |
-| ⬜ | 05 | Convert FreeBusy → `availability_windows` (source='google_cal') | |
+| ✅ | 05 | Agent layer project setup (`agent/package.json`, `tsconfig.json`) | `agent/package.json`, `agent/tsconfig.json`, `agent/jest.config.js` — TypeScript, Jest, SQS SDK, googleapis, pg. |
+| ✅ | 05 | `calendar-sync.worker.ts` — SQS consumer for `SYNC_CALENDAR` | `agent/src/workers/calendar-sync.worker.ts` + `agent/src/index.ts` SQS polling loop with dispatch. |
+| ✅ | 05 | Google FreeBusy API integration (read-only) | `fetchFreeBusy()` in calendar-sync.worker.ts — queries primary calendar, 30-day look-ahead, filters invalid blocks. |
+| ✅ | 05 | Convert FreeBusy → `availability_windows` (source='google_cal') | `handleSyncCalendar()` — deletes stale windows, inserts fresh ones as `source='google_cal'`, `window_type='unavailable'`. 12 agent tests passing. |
 
 ### Scheduling Service
 | Status | Doc | Task | Evidence / Notes |
@@ -150,9 +150,9 @@
 ### Cross-Instance Relay Scaffolding
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 04 | `CrossInstanceRelayClient` — WebFlux HTTP client | |
-| ⬜ | 04 | HMAC-SHA256 signature generation | |
-| ⬜ | 04 | HMAC signature validation filter | |
+| ✅ | 04 | `CrossInstanceRelayClient` — WebFlux HTTP client | `CrossInstanceRelayClient.kt` — WebFlux client with HMAC headers (`X-FieldIQ-Session-Id`, `X-FieldIQ-Timestamp`, `X-FieldIQ-Signature`, `X-FieldIQ-Instance-Id`), exponential backoff retry (2s/8s/30s on 5xx). 5 unit tests in `CrossInstanceRelayClientTest.kt`. |
+| ✅ | 04 | HMAC-SHA256 signature generation | `HmacService.kt` — key derivation (`HMAC-SHA256(instanceSecret, inviteToken)`), signing (`sessionId + \n + timestamp + \n + body`), validation with constant-time comparison and ±5min drift. 14 unit tests in `HmacServiceTest.kt`. |
+| ✅ | 04 | HMAC signature validation filter | `HmacAuthenticationFilter.kt` — `OncePerRequestFilter` on `/api/negotiate/` paths, extracts HMAC headers, derives session key, validates signature, Redis nonce for replay prevention (5-min TTL). 11 unit tests in `HmacAuthenticationFilterTest.kt`. Also created `RelayDtos.kt` (RelayRequest, RelaySlot, RelayResponse, RelayErrorResponse). |
 
 ---
 
@@ -268,10 +268,10 @@
 |--------|------|--------|------------|-------------|
 | 1 | Foundation | ✅ Complete | 23/23 | 23 |
 | 2 | Core CRUD + Auth | ✅ Complete | 24/24 | 24 |
-| 3 | Scheduling + Calendar Sync | 🔧 In Progress | 7/16 | 16 |
+| 3 | Scheduling + Calendar Sync | ✅ Complete | 16/16 | 16 |
 | 4 | Negotiation Protocol v1 | ⬜ Not Started | 0/18 | 18 |
 | 5 | React Native App | ⬜ Not Started | 0/10 | 10 |
 | 6 | Negotiation UX + Notifications | ⬜ Not Started | 0/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
 | 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **54/109** | **109** |
+| **Total** | | | **63/109** | **109** |
