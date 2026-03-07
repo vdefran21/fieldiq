@@ -1,93 +1,42 @@
-import {
-  SQSClient,
-  ReceiveMessageCommand,
-  DeleteMessageCommand,
-} from '@aws-sdk/client-sqs';
+import { SQSClient } from '@aws-sdk/client-sqs';
 import { config } from './config';
 import { close as closeDb } from './db';
-import {
-  handleSyncCalendar,
-  SyncCalendarTask,
-} from './workers/calendar-sync.worker';
+import { pollOnce } from './task-dispatcher';
 
 /**
- * Agent layer entry point — polls SQS for tasks and dispatches to workers.
+ * Agent layer entry point — thin bootstrap that starts the SQS polling loop.
  *
- * Runs as a continuous loop, long-polling the agent tasks queue for messages.
- * Each message contains a task type and payload. The dispatcher routes tasks
- * to the appropriate worker function.
+ * All runtime logic (message routing, processing, deletion) lives in
+ * {@link task-dispatcher.ts}. This file is responsible only for:
+ * - Creating the SQS client from config
+ * - Running the polling loop
+ * - Handling graceful shutdown signals
  *
- * **Task types:**
- * - `SYNC_CALENDAR` — syncs Google Calendar busy blocks (see calendar-sync.worker.ts)
- * - `SEND_NOTIFICATION` — dispatches push/SMS/email (Sprint 6)
- * - `SEND_REMINDERS` — drafts and sends event reminders via Claude Haiku (Sprint 6)
+ * Guarded by `require.main === module` so importing this file in tests
+ * does not trigger the polling loop.
  *
- * **Graceful shutdown:** Listens for SIGINT/SIGTERM and stops polling after the
- * current batch completes. Closes the database connection pool on exit.
+ * @see task-dispatcher.ts for dispatchTask, processMessage, and pollOnce
  */
-
-const sqsClient = new SQSClient({
-  region: config.aws.region,
-  endpoint: config.aws.endpointUrl,
-});
 
 let running = true;
 
 /**
- * Dispatches an SQS message to the appropriate worker based on taskType.
+ * Main polling loop — calls pollOnce repeatedly until shutdown signal received.
  *
- * @param body The parsed message body containing taskType and payload.
+ * On SQS polling errors (network issues, service outage), pauses 5 seconds
+ * before retrying to avoid tight error loops.
  */
-async function dispatch(body: { taskType: string; [key: string]: unknown }): Promise<void> {
-  switch (body.taskType) {
-    case 'SYNC_CALENDAR':
-      await handleSyncCalendar(body as unknown as SyncCalendarTask);
-      break;
-
-    // Sprint 6: SEND_NOTIFICATION, SEND_REMINDERS
-    default:
-      console.warn(`Unknown task type: ${body.taskType}`);
-  }
-}
-
-/**
- * Main polling loop — receives and processes SQS messages.
- */
-async function pollLoop(): Promise<void> {
+async function pollLoop(sqsClient: SQSClient): Promise<void> {
   console.log('FieldIQ Agent starting — polling SQS for tasks...');
 
   while (running) {
     try {
-      const response = await sqsClient.send(
-        new ReceiveMessageCommand({
-          QueueUrl: config.aws.sqs.agentTasksQueue,
-          MaxNumberOfMessages: config.worker.maxMessages,
-          WaitTimeSeconds: config.worker.waitTimeSeconds,
-        }),
+      await pollOnce(
+        sqsClient,
+        config.aws.sqs.agentTasksQueue,
+        config.worker.waitTimeSeconds,
+        config.worker.maxMessages,
       );
-
-      const messages = response.Messages || [];
-
-      for (const message of messages) {
-        if (!message.Body || !message.ReceiptHandle) continue;
-
-        try {
-          const body = JSON.parse(message.Body);
-          console.log(`Processing task: ${body.taskType}`);
-          await dispatch(body);
-
-          // Delete message on success
-          await sqsClient.send(
-            new DeleteMessageCommand({
-              QueueUrl: config.aws.sqs.agentTasksQueue,
-              ReceiptHandle: message.ReceiptHandle,
-            }),
-          );
-        } catch (error) {
-          console.error('Task processing failed:', error);
-          // Message will become visible again after visibility timeout for retry
-        }
-      }
     } catch (error) {
       console.error('SQS polling error:', error);
       // Brief pause before retrying to avoid tight error loops
@@ -107,11 +56,18 @@ process.on('SIGTERM', () => {
   running = false;
 });
 
-// Start the agent
-pollLoop()
-  .then(() => closeDb())
-  .then(() => console.log('Agent stopped.'))
-  .catch((error) => {
-    console.error('Fatal error:', error);
-    process.exit(1);
+// Start the agent (only when run directly, not when imported for testing)
+if (require.main === module) {
+  const sqsClient = new SQSClient({
+    region: config.aws.region,
+    endpoint: config.aws.endpointUrl,
   });
+
+  pollLoop(sqsClient)
+    .then(() => closeDb())
+    .then(() => console.log('Agent stopped.'))
+    .catch((error) => {
+      console.error('Fatal error:', error);
+      process.exit(1);
+    });
+}

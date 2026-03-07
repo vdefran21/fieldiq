@@ -39,12 +39,32 @@ The agent starts an SQS long-polling loop and runs until stopped. It responds to
 
 ## Testing
 
+### Unit Tests
+
 ```bash
 npm test            # Run all tests with coverage
 npm run test:watch  # Watch mode
 ```
 
-All external dependencies (SQS, Google APIs, PostgreSQL) are mocked in tests — no live services needed.
+All external dependencies (SQS, Google APIs, PostgreSQL) are mocked — no live services needed.
+
+### Integration Tests
+
+```bash
+npm run test:integration          # Requires Docker infrastructure
+npm run test:integration:watch    # Watch mode
+```
+
+Integration tests use real Postgres and real LocalStack SQS. Only the Google Calendar API is mocked. Prerequisites:
+
+1. `docker compose up -d` (from repo root)
+2. Backend booted at least once to apply Flyway migrations
+
+The test suite verifies prerequisites on startup and fails with a clear message if they're missing.
+
+Two test layers:
+- **Worker-level** (`calendar-sync.integration.test.ts`) — calls `handleSyncCalendar()` directly with real DB and real encryption
+- **Runtime-level** (`sqs-dispatch.integration.test.ts`) — exercises the full SQS contract via `pollOnce()`: receive, route, delete on success, retry on failure
 
 ## Environment Variables
 
@@ -88,18 +108,29 @@ When the backend enqueues a `SYNC_CALENDAR` task (e.g., after a user connects Go
 agent/
 ├── package.json
 ├── tsconfig.json
-├── jest.config.js
+├── jest.config.js                  # Unit test config
+├── jest.integration.config.js      # Integration test config
 ├── src/
-│   ├── index.ts                # Entry point — SQS polling loop, task dispatcher
-│   ├── config.ts               # Environment config with defaults
-│   ├── db.ts                   # PostgreSQL connection pool (max 5 connections)
-│   ├── encryption.ts           # AES-256-GCM token decryption (matches backend format)
+│   ├── index.ts                    # Entry point — thin bootstrap, polling loop
+│   ├── task-dispatcher.ts          # Runtime logic — dispatchTask, processMessage, pollOnce
+│   ├── config.ts                   # Environment config with defaults
+│   ├── db.ts                       # PostgreSQL connection pool (max 5 connections)
+│   ├── encryption.ts               # AES-256-GCM token decryption (matches backend format)
 │   ├── workers/
-│   │   └── calendar-sync.worker.ts   # SYNC_CALENDAR handler
-│   └── __tests__/
-│       ├── calendar-sync.worker.test.ts
-│       └── encryption.test.ts
-└── dist/                       # Compiled output (npm run build)
+│   │   └── calendar-sync.worker.ts # SYNC_CALENDAR handler
+│   ├── __tests__/                  # Unit tests (all deps mocked)
+│   │   ├── calendar-sync.worker.test.ts
+│   │   └── encryption.test.ts
+│   └── __integration__/            # Integration tests (real Postgres + SQS)
+│       ├── setup/
+│       │   ├── global-setup.ts     # Prerequisite verification
+│       │   ├── global-teardown.ts  # Pool cleanup
+│       │   ├── test-helpers.ts     # DB factory functions
+│       │   ├── test-sqs.ts         # SQS send/purge helpers
+│       │   └── test-encryption.ts  # Backend-compatible encrypt helper
+│       ├── calendar-sync.integration.test.ts
+│       └── sqs-dispatch.integration.test.ts
+└── dist/                           # Compiled output (npm run build)
 ```
 
 ## Troubleshooting

@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-07 (session 8 — Sprint 3 complete: relay scaffolding, Google Calendar OAuth, calendar sync agent)
+**Last updated:** 2026-03-07 (session 8 — Sprint 3 complete, agent integration tests + task-dispatcher refactor)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -130,7 +130,9 @@
 | ✅ | 05 | Agent layer project setup (`agent/package.json`, `tsconfig.json`) | `agent/package.json`, `agent/tsconfig.json`, `agent/jest.config.js` — TypeScript, Jest, SQS SDK, googleapis, pg. |
 | ✅ | 05 | `calendar-sync.worker.ts` — SQS consumer for `SYNC_CALENDAR` | `agent/src/workers/calendar-sync.worker.ts` + `agent/src/index.ts` SQS polling loop with dispatch. |
 | ✅ | 05 | Google FreeBusy API integration (read-only) | `fetchFreeBusy()` in calendar-sync.worker.ts — queries primary calendar, 30-day look-ahead, filters invalid blocks. |
-| ✅ | 05 | Convert FreeBusy → `availability_windows` (source='google_cal') | `handleSyncCalendar()` — deletes stale windows, inserts fresh ones as `source='google_cal'`, `window_type='unavailable'`. 12 agent tests passing. |
+| ✅ | 05 | Convert FreeBusy → `availability_windows` (source='google_cal') | `handleSyncCalendar()` — deletes stale windows, inserts fresh ones as `source='google_cal'`, `window_type='unavailable'`. 12 unit tests passing. |
+| ✅ | 07 | Agent runtime refactor: extract `task-dispatcher.ts` from `index.ts` | `task-dispatcher.ts` exports `dispatchTask()`, `processMessage()`, `pollOnce()` with structured `PollResult`. `index.ts` is thin bootstrap with `require.main === module` guard. |
+| ✅ | 07 | Agent integration tests (real Postgres + SQS, mocked Google) | `jest.integration.config.js`, `src/__integration__/` — 6 worker-level tests (calendar-sync) + 3 runtime-level tests (SQS dispatch via `pollOnce()`). Setup: `global-setup.ts` hard-fails if Flyway schema missing. |
 
 ### Scheduling Service
 | Status | Doc | Task | Evidence / Notes |
@@ -268,10 +270,10 @@
 |--------|------|--------|------------|-------------|
 | 1 | Foundation | ✅ Complete | 23/23 | 23 |
 | 2 | Core CRUD + Auth | ✅ Complete | 24/24 | 24 |
-| 3 | Scheduling + Calendar Sync | ✅ Complete | 16/16 | 16 |
+| 3 | Scheduling + Calendar Sync | ✅ Complete | 18/18 | 18 |
 | 4 | Negotiation Protocol v1 | ⬜ Not Started | 0/18 | 18 |
 | 5 | React Native App | ⬜ Not Started | 0/10 | 10 |
 | 6 | Negotiation UX + Notifications | ⬜ Not Started | 0/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
 | 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **63/109** | **109** |
+| **Total** | | | **65/111** | **111** |

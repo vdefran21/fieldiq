@@ -21,6 +21,9 @@ build/
 # Expo
 mobile/.expo/
 
+# Test coverage
+coverage/
+
 # Misc
 *.log
 .fieldiq-dev/
