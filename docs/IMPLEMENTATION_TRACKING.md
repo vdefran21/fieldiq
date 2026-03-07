@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-06 (session 6 — Sprint 3: SchedulingService, suggest-windows endpoint, 21 new unit tests)
+**Last updated:** 2026-03-06 (session 7 — dev.sh backend shutdown persistence fix)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -29,6 +29,7 @@
 | ✅ | 00 | `.env.example` with all config templates | `.env.example` |
 | ✅ | 00 | `CLAUDE.md` with architecture decisions | `CLAUDE.md` |
 | ✅ | 00 | `README.md` with architecture overview and quick start | `README.md` |
+| ✅ | 00 | `dev.sh` local environment orchestration script | `dev.sh`, `.gitignore` — persists backend runtime state in `.fieldiq-dev/` so `./dev.sh stop` and `Ctrl+C` clean up backend Java processes as well as Docker containers. |
 | ✅ | 00 | `infra/localstack-init.sh` — 3 SQS queues auto-created | `infra/localstack-init.sh` |
 | ✅ | 03 | Backend skeleton — Spring Boot 3.3, Java 21, Kotlin | `backend/build.gradle.kts`, `FieldIQApplication.kt`. Session 5: added `@PostConstruct` JVM timezone=UTC to prevent `LocalTime` ↔ PostgreSQL `TIME` column shift when Hibernate `jdbc.time_zone: UTC` doesn't match JVM locale. |
 | ✅ | 03 | `build.gradle.kts` with all Phase 1 dependencies | Spring Boot, JPA, WebSocket, Security, JWT, WebFlux, TestContainers, MockK |
