@@ -1,0 +1,68 @@
+meta {
+  name: 04-propose
+  type: http
+  seq: 4
+}
+
+docs {
+  Manager A proposes time slots for the negotiation. This calls
+  SchedulingService to find available windows and relays them.
+  The test verifies the proposal DTO structure.
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, createAvailabilityWith } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+
+    // Ensure team A has availability so SchedulingService returns windows
+    const team = await ensureTeam();
+    await createAvailabilityWith({
+      teamId: team.id,
+      dayOfWeek: 6,
+      startTime: '09:00',
+      endTime: '17:00',
+      windowType: 'available',
+    });
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/negotiations/{{sessionId}}/propose
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: isString
+  res.body.proposedBy: eq initiator
+}
+
+tests {
+  const { expect } = require('chai');
+  test('proposal has expected structure', () => {
+    expect(res.body).to.have.property('sessionId');
+    expect(res.body).to.have.property('roundNumber');
+    expect(res.body).to.have.property('slots');
+    expect(res.body.slots).to.be.an('array');
+  });
+  test('round number is 1', () => {
+    expect(res.body.roundNumber).to.equal(1);
+  });
+  test('proposal was sent by initiator', () => {
+    expect(res.body.proposedBy).to.equal('initiator');
+  });
+}
+
+script:post-response {
+  if (res.body.id) {
+    bru.setVar('proposalId', res.body.id);
+  }
+}

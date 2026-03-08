@@ -57,7 +57,29 @@ Uses JUnit 5, MockK, and TestContainers (spins up a real Postgres container — 
 ./gradlew test
 ```
 
-Run `./gradlew test` to see current counts.
+Gradle may report the `test` task as up to date if inputs have not changed, so a plain
+`./gradlew test` does not necessarily print a fresh execution summary.
+
+To force the tests to run again:
+
+```bash
+./gradlew test --rerun-tasks
+
+# Or clear previous test outputs first
+./gradlew cleanTest test
+```
+
+The most common way to inspect backend unit test results is the HTML report at:
+
+```text
+build/reports/tests/test/index.html
+```
+
+Machine-readable JUnit XML results are also written to:
+
+```text
+build/test-results/test/
+```
 
 ### Bruno API Integration Tests
 

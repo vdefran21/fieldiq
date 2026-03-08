@@ -38,8 +38,10 @@ import java.util.UUID
  *
  * @property id Unique identifier, auto-generated UUID. Used as the session ID in
  *   cross-instance HTTP headers (`X-FieldIQ-Session-Id`).
- * @property initiatorTeamId Foreign key to the [Team] that started this negotiation.
- *   Always on the local instance.
+ * @property initiatorTeamId UUID of the team that started this negotiation.
+ *   On the initiating instance this points to a local [Team]. On a responder-side
+ *   shadow session it is a remote team identifier carried only as a reference, so
+ *   the database does not enforce a local foreign key for this column.
  * @property initiatorInstance Base URL of the initiating FieldIQ instance
  *   (e.g., "http://localhost:8080"). Used by the responder to relay proposals back.
  * @property initiatorManager Foreign key to the [User] (manager) who initiated. Used
@@ -58,8 +60,10 @@ import java.util.UUID
  * @property requestedDurationMinutes Desired game duration in minutes. Defaults to 90
  *   (standard youth soccer game). Used by SchedulingService to find windows of
  *   sufficient length.
- * @property agreedStartsAt The mutually agreed game start time. Populated only when
- *   [status] is "confirmed". Null in all other states.
+ * @property agreedStartsAt The mutually agreed game start time. Populated when a match
+ *   is found (pending_approval) or on confirmation. Null before match.
+ * @property agreedEndsAt The mutually agreed game end time. Populated alongside
+ *   [agreedStartsAt] when a match is found via relay response processing.
  * @property agreedLocation The mutually agreed game location. Populated on confirmation.
  * @property inviteToken Single-use bearer token for the join handshake. Generated on
  *   session creation, consumed (nullified) when the responder joins. 48-hour TTL.
@@ -71,6 +75,11 @@ import java.util.UUID
  *   fails. Defaults to 3. Prevents infinite back-and-forth.
  * @property currentRound The current round number (0 = no proposals yet, 1 = first
  *   round of proposals, etc.). Incremented by NegotiationService when a new round begins.
+ * @property initiatorConfirmed Whether the initiating manager has confirmed the agreed slot.
+ *   Both [initiatorConfirmed] and [responderConfirmed] must be true before the session
+ *   transitions to "confirmed" and game events are created.
+ * @property responderConfirmed Whether the responding manager has confirmed the agreed slot.
+ *   Both flags must be true before the session transitions to "confirmed".
  * @property expiresAt Absolute expiration timestamp for the session. Sessions that reach
  *   this time without confirming are moved to "failed" status by a cleanup job.
  * @property createdAt Timestamp of session creation, set once and never updated.
@@ -120,6 +129,9 @@ data class NegotiationSession(
     @Column(name = "agreed_starts_at")
     val agreedStartsAt: Instant? = null,
 
+    @Column(name = "agreed_ends_at")
+    val agreedEndsAt: Instant? = null,
+
     @Column(name = "agreed_location")
     val agreedLocation: String? = null,
 
@@ -134,6 +146,12 @@ data class NegotiationSession(
 
     @Column(name = "current_round", nullable = false)
     val currentRound: Int = 0,
+
+    @Column(name = "initiator_confirmed", nullable = false)
+    val initiatorConfirmed: Boolean = false,
+
+    @Column(name = "responder_confirmed", nullable = false)
+    val responderConfirmed: Boolean = false,
 
     @Column(name = "expires_at")
     val expiresAt: Instant? = null,

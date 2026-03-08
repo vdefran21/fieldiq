@@ -1,0 +1,51 @@
+meta {
+  name: 02-getSession
+  type: http
+  seq: 2
+}
+
+docs {
+  Retrieves the negotiation session created in the previous test.
+  Verifies the session DTO shape and that the initiator can access it.
+}
+
+script:pre-request {
+  const { loginAs } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/negotiations/{{sessionId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{sessionId}}
+  res.body.status: eq pending_response
+}
+
+tests {
+  const { expect } = require('chai');
+  test('session has expected structure', () => {
+    expect(res.body).to.have.property('initiatorTeamId');
+    expect(res.body).to.have.property('status');
+    expect(res.body).to.have.property('requestedDurationMinutes');
+    expect(res.body).to.have.property('maxRounds');
+    expect(res.body).to.have.property('currentRound');
+    expect(res.body).to.have.property('createdAt');
+  });
+  test('proposals array is empty initially', () => {
+    expect(res.body.proposals).to.be.an('array');
+    expect(res.body.proposals).to.have.length(0);
+  });
+}

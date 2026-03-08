@@ -8,15 +8,21 @@ import com.fieldiq.service.CrossInstanceRelayClient.Companion.HEADER_SESSION_ID
 import com.fieldiq.service.CrossInstanceRelayClient.Companion.HEADER_SIGNATURE
 import com.fieldiq.service.CrossInstanceRelayClient.Companion.HEADER_TIMESTAMP
 import jakarta.servlet.FilterChain
+import jakarta.servlet.ReadListener
+import jakarta.servlet.ServletInputStream
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import jakarta.servlet.http.HttpServletRequestWrapper
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
-import org.springframework.web.util.ContentCachingRequestWrapper
+import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.InputStreamReader
 import java.security.MessageDigest
+import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.UUID
 
@@ -43,9 +49,10 @@ import java.util.UUID
  * relay endpoints are `permitAll()` in [SecurityConfig] and protected by this
  * dedicated filter.
  *
- * **Request body caching:** The filter wraps the request in a [ContentCachingRequestWrapper]
- * so the body can be read for signature computation without consuming the input stream
- * that downstream controllers need.
+ * **Request body preservation:** The filter buffers the raw body bytes so the HMAC can
+ * be validated and then forwards a wrapper that replays the same bytes to Spring MVC.
+ * Relay controllers therefore receive the original JSON payload even after this
+ * filter has inspected it.
  *
  * @property hmacService Provides signature computation and validation.
  * @property sessionRepository Loads negotiation sessions for key derivation.
@@ -70,19 +77,47 @@ class HmacAuthenticationFilter(
 
         /** TTL for replay prevention nonces — matches the timestamp drift window. */
         val NONCE_TTL: Duration = Duration.ofMinutes(5)
+
+        /**
+         * Redis key prefix for cached HMAC session keys.
+         *
+         * After the responder joins a negotiation (consuming the invite token),
+         * the derived session key is cached in Redis so that subsequent relay calls
+         * can still validate HMAC signatures. The key format is:
+         * `fieldiq:sessionkey:<sessionId>` and the value is Base64-encoded.
+         *
+         * Written by [com.fieldiq.service.NegotiationService.joinSession].
+         * Read by this filter when `session.inviteToken` is null (post-join).
+         */
+        const val SESSION_KEY_PREFIX = "fieldiq:sessionkey:"
+
+        /**
+         * TTL for cached session keys — 72 hours.
+         *
+         * Covers the 48h invite token TTL plus additional negotiation duration.
+         * After this TTL expires, relay calls for this session will fail with 401.
+         */
+        val SESSION_KEY_TTL: Duration = Duration.ofHours(72)
     }
 
     /**
-     * Only apply this filter to cross-instance relay endpoints.
+     * Only apply this filter to cross-instance relay endpoints, excluding `/api/negotiate/incoming`.
+     *
+     * The `/incoming` endpoint is excluded because it bootstraps a shadow session on Instance B
+     * during the join handshake. At that point, no local session exists on Instance B, so the
+     * HMAC filter cannot look up a session for key derivation. The invite token in the request
+     * body serves as a bearer credential — it is 36 bytes of cryptographic randomness generated
+     * by Instance A and shared only with session participants.
      *
      * All other requests (user-facing REST API, health checks) skip this filter entirely.
      * JWT authentication for user endpoints is handled by [JwtAuthenticationFilter].
      *
      * @param request The incoming HTTP request.
-     * @return `true` if the request should NOT be filtered (i.e., not a relay endpoint).
+     * @return `true` if the request should NOT be filtered (i.e., not a relay endpoint, or is `/incoming`).
      */
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         return !request.requestURI.startsWith("/api/negotiate/")
+            || request.requestURI == "/api/negotiate/incoming"
     }
 
     /**
@@ -94,7 +129,7 @@ class HmacAuthenticationFilter(
      * On success, stores the session ID as a request attribute so downstream controllers
      * can access it without re-parsing headers.
      *
-     * @param request The incoming HTTP request (wrapped for body caching).
+     * @param request The incoming HTTP request.
      * @param response The HTTP response (used for error writing on failure).
      * @param filterChain The filter chain to continue if validation succeeds.
      */
@@ -103,13 +138,8 @@ class HmacAuthenticationFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        // Wrap request to allow reading the body for signature computation
-        // without consuming the stream for downstream controllers
-        val wrappedRequest = if (request is ContentCachingRequestWrapper) {
-            request
-        } else {
-            ContentCachingRequestWrapper(request)
-        }
+        val cachedBody = request.inputStream.readAllBytes()
+        val wrappedRequest = CachedBodyHttpServletRequest(request, cachedBody)
 
         // Extract required headers
         val sessionId = wrappedRequest.getHeader(HEADER_SESSION_ID)
@@ -136,38 +166,32 @@ class HmacAuthenticationFilter(
             return
         }
 
-        // Derive the session key from the invite token
-        // The invite token is consumed (set to null) after join, so we need the session key hash
-        // For sessions that have been joined, we need the invite token to have been stored
-        // during key derivation. In practice, both instances derive the key at join time
-        // and cache/store it. Here we re-derive from the stored session key hash.
-        //
-        // NOTE: In the full implementation, the derived session key will be cached in-memory
-        // or re-derived from the invite token before it's consumed. For the scaffolding,
-        // we look up the session and require the invite token to still be available,
-        // or use a pre-derived key stored on the session.
+        // Derive the session key from the invite token or retrieve from Redis cache.
+        // Before join: invite token is available, derive key directly.
+        // After join: invite token is consumed (null), look up cached key in Redis.
+        // NegotiationService.joinSession() caches the derived key at join time.
+        val sessionKey: ByteArray
         val inviteToken = session.inviteToken
-        if (inviteToken == null) {
-            // Session has been joined — key must be derived from cached key
-            // This will be populated by NegotiationService when it stores the derived key
-            // For now, we need a mechanism to retrieve the session key
-            // The session key hash is stored for audit, but we can't reverse a hash
-            // In the full implementation, session keys are cached in Redis
-            writeError(
-                response,
-                401,
-                "invalid_signature",
-                "Session key unavailable — session may have expired or key was not cached",
-            )
-            return
+        if (inviteToken != null) {
+            // Pre-join: derive key from invite token (first relay or join-time call)
+            sessionKey = hmacService.deriveSessionKey(inviteToken)
+        } else {
+            // Post-join: retrieve cached key from Redis
+            val cachedKey = redisTemplate.opsForValue()
+                .get("$SESSION_KEY_PREFIX$sessionId")
+            if (cachedKey == null) {
+                writeError(
+                    response,
+                    401,
+                    "invalid_signature",
+                    "Session key not cached — session may have expired",
+                )
+                return
+            }
+            sessionKey = java.util.Base64.getDecoder().decode(cachedKey)
         }
 
-        val sessionKey = hmacService.deriveSessionKey(inviteToken)
-
-        // Read the request body for signature validation
-        // ContentCachingRequestWrapper caches after the body is read by the downstream,
-        // so we need to force a read first
-        val body = wrappedRequest.inputStream.readAllBytes().let { String(it) }
+        val body = cachedBody.toString(StandardCharsets.UTF_8)
 
         // Validate timestamp + signature
         if (!hmacService.validate(sessionKey, sessionId, timestamp, body, signature)) {
@@ -244,5 +268,47 @@ class HmacAuthenticationFilter(
         val digest = MessageDigest.getInstance("SHA-256")
         return digest.digest(signature.toByteArray())
             .joinToString("") { "%02x".format(it) }
+    }
+}
+
+/**
+ * Request wrapper that replays a previously buffered HTTP body.
+ *
+ * [HmacAuthenticationFilter] reads the relay payload before Spring MVC performs
+ * `@RequestBody` binding. This wrapper makes the same bytes available again to
+ * downstream filters and controllers.
+ *
+ * @property cachedBody Raw request body bytes captured before authentication.
+ */
+private class CachedBodyHttpServletRequest(
+    request: HttpServletRequest,
+    private val cachedBody: ByteArray,
+) : HttpServletRequestWrapper(request) {
+
+    /**
+     * Returns a fresh input stream over the cached request body.
+     *
+     * @return [ServletInputStream] backed by the original relay JSON bytes.
+     */
+    override fun getInputStream(): ServletInputStream {
+        val buffer = ByteArrayInputStream(cachedBody)
+        return object : ServletInputStream() {
+            override fun read(): Int = buffer.read()
+
+            override fun isFinished(): Boolean = buffer.available() == 0
+
+            override fun isReady(): Boolean = true
+
+            override fun setReadListener(readListener: ReadListener?) = Unit
+        }
+    }
+
+    /**
+     * Returns a UTF-8 reader over the cached request body.
+     *
+     * @return [BufferedReader] for the original relay JSON.
+     */
+    override fun getReader(): BufferedReader {
+        return BufferedReader(InputStreamReader(inputStream, StandardCharsets.UTF_8))
     }
 }

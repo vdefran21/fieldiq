@@ -1,6 +1,7 @@
 package com.fieldiq.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fieldiq.api.dto.IncomingNegotiationRequest
 import com.fieldiq.api.dto.RelayRequest
 import com.fieldiq.api.dto.RelayResponse
 import com.fieldiq.config.FieldIQProperties
@@ -146,6 +147,70 @@ class CrossInstanceRelayClient(
             }
             .block()
             ?: throw RelayException("Relay request returned null response: session=$sessionId")
+    }
+
+    /**
+     * Sends an incoming negotiation request to bootstrap a shadow session on the remote instance.
+     *
+     * Called during the join handshake to notify Instance B that a responder has joined on
+     * Instance A. No HMAC signing is required — the `/incoming` endpoint is excluded from
+     * the HMAC filter. The invite token in the request body serves as the bearer credential.
+     *
+     * Uses the same retry strategy as [sendRelay].
+     *
+     * @param targetInstanceUrl The base URL of the remote instance.
+     * @param request The incoming negotiation details including invite token.
+     * @return The [RelayResponse] from the remote instance.
+     * @throws RelayException If all retry attempts fail.
+     */
+    fun sendIncoming(
+        targetInstanceUrl: String,
+        request: IncomingNegotiationRequest,
+    ): RelayResponse {
+        val url = "${targetInstanceUrl.trimEnd('/')}/api/negotiate/incoming"
+        val body = objectMapper.writeValueAsString(request)
+
+        logger.info(
+            "Sending incoming request: session={}, target={}",
+            request.sessionId,
+            targetInstanceUrl,
+        )
+
+        return webClient.post()
+            .uri(url)
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(HEADER_INSTANCE_ID, properties.instance.id)
+            .bodyValue(body)
+            .retrieve()
+            .bodyToMono(RelayResponse::class.java)
+            .timeout(REQUEST_TIMEOUT)
+            .retryWhen(
+                Retry.backoff(2, Duration.ofSeconds(2))
+                    .maxBackoff(Duration.ofSeconds(30))
+                    .filter { throwable ->
+                        when (throwable) {
+                            is WebClientResponseException -> throwable.statusCode.is5xxServerError
+                            else -> true
+                        }
+                    }
+                    .doBeforeRetry { signal ->
+                        logger.warn(
+                            "Retrying incoming request (attempt {}): session={}, error={}",
+                            signal.totalRetries() + 1,
+                            request.sessionId,
+                            signal.failure().message,
+                        )
+                    },
+            )
+            .doOnError { error ->
+                logger.error(
+                    "Incoming request failed after all retries: session={}, error={}",
+                    request.sessionId,
+                    error.message,
+                )
+            }
+            .block()
+            ?: throw RelayException("Incoming request returned null response: session=${request.sessionId}")
     }
 }
 

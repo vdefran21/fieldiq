@@ -11,6 +11,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import jakarta.servlet.FilterChain
+import jakarta.servlet.ServletRequest
+import jakarta.servlet.ServletResponse
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -98,6 +100,22 @@ class HmacAuthenticationFilterTest {
         @DisplayName("skips auth endpoints")
         fun skipsAuth() {
             val request = MockHttpServletRequest("POST", "/auth/request-otp")
+            val response = MockHttpServletResponse()
+
+            filter.doFilter(request, response, filterChain)
+
+            verify { filterChain.doFilter(any(), any()) }
+            assertEquals(200, response.status)
+        }
+
+        /**
+         * The /incoming endpoint is excluded from HMAC validation because it bootstraps
+         * a shadow session using the invite token as a bearer credential.
+         */
+        @Test
+        @DisplayName("skips /api/negotiate/incoming endpoint")
+        fun skipsIncoming() {
+            val request = MockHttpServletRequest("POST", "/api/negotiate/incoming")
             val response = MockHttpServletResponse()
 
             filter.doFilter(request, response, filterChain)
@@ -240,6 +258,42 @@ class HmacAuthenticationFilterTest {
         }
 
         /**
+         * Valid relay requests must preserve the JSON payload for controller
+         * `@RequestBody` binding after signature validation succeeds.
+         */
+        @Test
+        @DisplayName("preserves request body for downstream controller binding")
+        fun preservesRequestBody() {
+            val timestamp = Instant.now().toString()
+            val signature = "valid-signature-hex"
+
+            val session = mockk<NegotiationSession>()
+            every { session.inviteToken } returns inviteToken
+            every { sessionRepository.findById(sessionId) } returns Optional.of(session)
+            every { hmacService.deriveSessionKey(inviteToken) } returns sessionKey
+            every { hmacService.validate(sessionKey, sessionId.toString(), timestamp, testBody, signature) } returns true
+            every { valueOps.setIfAbsent(any(), any(), any<Duration>()) } returns true
+
+            val request = MockHttpServletRequest("POST", "/api/negotiate/$sessionId/relay").apply {
+                addHeader(HEADER_SESSION_ID, sessionId.toString())
+                addHeader(HEADER_TIMESTAMP, timestamp)
+                addHeader(HEADER_SIGNATURE, signature)
+                addHeader(HEADER_INSTANCE_ID, "instance-b")
+                setContent(testBody.toByteArray())
+            }
+            val response = MockHttpServletResponse()
+
+            var forwardedBody: String? = null
+            val capturingChain = FilterChain { forwardedRequest: ServletRequest, _: ServletResponse ->
+                forwardedBody = forwardedRequest.inputStream.readAllBytes().decodeToString()
+            }
+
+            filter.doFilter(request, response, capturingChain)
+
+            assertEquals(testBody, forwardedBody)
+        }
+
+        /**
          * A request with an invalid HMAC signature should be rejected with 401.
          */
         @Test
@@ -269,15 +323,16 @@ class HmacAuthenticationFilterTest {
         }
 
         /**
-         * A session with a consumed invite token (null) should return 401 since
-         * the session key cannot be derived.
+         * A session with a consumed invite token (null) and no cached key in Redis
+         * should return 401 since the session key cannot be derived.
          */
         @Test
-        @DisplayName("rejects request when invite token is consumed")
-        fun consumedToken() {
+        @DisplayName("rejects request when invite token is consumed and Redis has no cached key")
+        fun consumedTokenRedisMiss() {
             val session = mockk<NegotiationSession>()
             every { session.inviteToken } returns null
             every { sessionRepository.findById(sessionId) } returns Optional.of(session)
+            every { valueOps.get("${HmacAuthenticationFilter.SESSION_KEY_PREFIX}$sessionId") } returns null
 
             val request = MockHttpServletRequest("POST", "/api/negotiate/$sessionId/relay").apply {
                 addHeader(HEADER_SESSION_ID, sessionId.toString())
@@ -290,6 +345,39 @@ class HmacAuthenticationFilterTest {
             filter.doFilter(request, response, filterChain)
 
             assertEquals(401, response.status)
+            assertTrue(response.contentAsString.contains("Session key not cached"))
+        }
+
+        /**
+         * A session with a consumed invite token (null) but a valid cached key in
+         * Redis should successfully validate the HMAC signature.
+         */
+        @Test
+        @DisplayName("resolves session key from Redis when invite token is consumed")
+        fun consumedTokenRedisHit() {
+            val timestamp = Instant.now().toString()
+            val signature = "valid-signature-hex"
+            val cachedKeyBase64 = java.util.Base64.getEncoder().encodeToString(sessionKey)
+
+            val session = mockk<NegotiationSession>()
+            every { session.inviteToken } returns null
+            every { sessionRepository.findById(sessionId) } returns Optional.of(session)
+            every { valueOps.get("${HmacAuthenticationFilter.SESSION_KEY_PREFIX}$sessionId") } returns cachedKeyBase64
+            every { hmacService.validate(sessionKey, sessionId.toString(), timestamp, any(), signature) } returns true
+            every { valueOps.setIfAbsent(any(), any(), any<Duration>()) } returns true
+
+            val request = MockHttpServletRequest("POST", "/api/negotiate/$sessionId/relay").apply {
+                addHeader(HEADER_SESSION_ID, sessionId.toString())
+                addHeader(HEADER_TIMESTAMP, timestamp)
+                addHeader(HEADER_SIGNATURE, signature)
+                addHeader(HEADER_INSTANCE_ID, "instance-b")
+                setContent(testBody.toByteArray())
+            }
+            val response = MockHttpServletResponse()
+
+            filter.doFilter(request, response, filterChain)
+
+            verify { filterChain.doFilter(any(), response) }
         }
     }
 

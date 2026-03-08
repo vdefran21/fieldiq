@@ -423,20 +423,28 @@ export interface NegotiationSessionDto {
   requestedDateRangeEnd?: string;
   /** Desired game duration in minutes. */
   requestedDurationMinutes: number;
-  /** Agreed game start time (only set when status is "confirmed"). */
+  /** Agreed game start time. Set when match found (pending_approval) or on confirmation. */
   agreedStartsAt?: string;
-  /** Agreed game location (only set when status is "confirmed"). */
+  /** Agreed game end time. Set alongside agreedStartsAt. */
+  agreedEndsAt?: string;
+  /** Agreed game location. Set on confirmation. */
   agreedLocation?: string;
-  /** Invite token for sharing with the opposing team (only visible to initiator). */
+  /** Invite token for sharing with the opposing team (only visible to initiator, null after join). */
   inviteToken?: string;
   /** Maximum proposal rounds before the negotiation fails. */
   maxRounds: number;
   /** Current round number (0 = no proposals yet). */
   currentRound: number;
+  /** Whether the initiating manager has confirmed the agreed slot. */
+  initiatorConfirmed: boolean;
+  /** Whether the responding manager has confirmed the agreed slot. */
+  responderConfirmed: boolean;
   /** Session expiration time in ISO 8601 format. */
   expiresAt?: string;
   /** When the session was created. */
   createdAt: string;
+  /** Proposal history for this session. */
+  proposals?: NegotiationProposalDto[];
 }
 
 /**
@@ -476,14 +484,28 @@ export interface TimeSlotDto {
 }
 
 /**
- * Request body for POST /negotiations/:sessionId/propose.
- * Sends a set of available time slots to the other team.
- *
- * Corresponds to Kotlin DTO: ProposeRequest (to be created in Sprint 4)
+ * @deprecated Backend auto-computes proposals via SchedulingService.
+ * POST /negotiations/:id/propose takes no request body.
  */
 export interface ProposeRequest {
   /** Array of proposed time windows for the game. */
   slots: TimeSlotDto[];
+}
+
+/**
+ * Request body for POST /negotiations/:sessionId/join.
+ * Allows the opposing team's manager to join an existing negotiation session
+ * using the single-use invite token.
+ *
+ * Corresponds to Kotlin DTO: JoinSessionRequest
+ */
+export interface JoinSessionRequest {
+  /** The single-use bearer token from the invite link. */
+  inviteToken: string;
+  /** UUID of the responding team on their FieldIQ instance. */
+  responderTeamId: string;
+  /** Base URL of the responder's FieldIQ instance (e.g., "http://localhost:8081"). */
+  responderInstance: string;
 }
 
 /**
@@ -511,6 +533,59 @@ export interface RespondToProposalRequest {
 export interface ConfirmNegotiationRequest {
   /** The specific time slot being confirmed. */
   slot: TimeSlotDto;
+}
+
+/**
+ * Request body for POST /api/negotiate/incoming (cross-instance).
+ * Sent by Instance A to Instance B during the join handshake to bootstrap a
+ * shadow session. The invite token serves as a bearer credential.
+ *
+ * Corresponds to Kotlin DTO: IncomingNegotiationRequest
+ */
+export interface IncomingNegotiationRequest {
+  /** UUID of the negotiation session (created by Instance A). */
+  sessionId: string;
+  /** Bearer credential and key derivation material. */
+  inviteToken: string;
+  /** UUID of the initiating team on Instance A. */
+  initiatorTeamId: string;
+  /** Base URL of Instance A. */
+  initiatorInstance: string;
+  /** UUID of the responding team on Instance B. */
+  responderTeamId: string;
+  /** Base URL of Instance B. */
+  responderInstance: string;
+  /** Earliest acceptable game date in YYYY-MM-DD format. */
+  requestedDateRangeStart?: string;
+  /** Latest acceptable game date in YYYY-MM-DD format. */
+  requestedDateRangeEnd?: string;
+  /** Desired game duration in minutes. */
+  requestedDurationMinutes?: number;
+  /** Maximum proposal rounds before failure. */
+  maxRounds?: number;
+  /** Session expiration time in ISO 8601 format. */
+  expiresAt?: string;
+}
+
+/**
+ * Response from a FieldIQ instance after receiving a relay request.
+ * Reports the session's current state after processing.
+ *
+ * Corresponds to Kotlin DTO: RelayResponse
+ */
+export interface RelayResponse {
+  /** Always "received" for successful processing. */
+  status: string;
+  /** Session status after processing (e.g., "proposing", "pending_approval"). */
+  sessionStatus: string;
+  /** Current round number after processing. */
+  currentRound: number;
+  /** Agreed game start time (set when sessionStatus is "pending_approval"). */
+  agreedStartsAt?: string;
+  /** Agreed game end time (set when sessionStatus is "pending_approval"). */
+  agreedEndsAt?: string;
+  /** Agreed game location (set when sessionStatus is "pending_approval"). */
+  agreedLocation?: string;
 }
 
 // ============================================================================

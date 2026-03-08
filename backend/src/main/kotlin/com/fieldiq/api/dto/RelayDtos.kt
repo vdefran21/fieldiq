@@ -60,16 +60,27 @@ data class RelaySlot(
  *
  * Acknowledges receipt and reports the session's current state. The caller uses
  * this to verify the relay was processed and to detect state machine mismatches.
+ * When the remote side transitions to "pending_approval" (match found), the agreed
+ * slot details are included so the initiator can also transition locally.
  *
  * @property status Always "received" for successful processing.
  * @property sessionStatus The negotiation session's status after processing the relay
- *   (e.g., "proposing", "pending_approval", "confirmed").
+ *   (e.g., "proposing", "pending_approval", "confirmed", "failed").
  * @property currentRound The session's current round number after processing.
+ * @property agreedStartsAt The agreed game start time, populated when sessionStatus
+ *   is "pending_approval" (match found on the remote side).
+ * @property agreedEndsAt The agreed game end time, populated when sessionStatus
+ *   is "pending_approval".
+ * @property agreedLocation The agreed game location, populated when sessionStatus
+ *   is "pending_approval".
  */
 data class RelayResponse(
     val status: String = "received",
     val sessionStatus: String,
     val currentRound: Int,
+    val agreedStartsAt: Instant? = null,
+    val agreedEndsAt: Instant? = null,
+    val agreedLocation: String? = null,
 )
 
 /**

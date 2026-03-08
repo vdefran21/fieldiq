@@ -1,0 +1,68 @@
+meta {
+  name: 07-joinBadToken
+  type: http
+  seq: 7
+}
+
+docs {
+  Verifies that joining with an invalid invite token returns an error.
+  Creates a new session, then attempts to join with a wrong token.
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, postResource } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+
+    // Create a fresh session to get a real session ID
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() + 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 14);
+    const fmt = (d) => d.toISOString().split('T')[0];
+
+    const initResp = await postResource('negotiations', {
+      teamId: team.id,
+      dateRangeStart: fmt(start),
+      dateRangeEnd: fmt(end),
+      durationMinutes: 90,
+    });
+    bru.setVar('freshSessionId', initResp.data.id);
+
+    const body = {
+      inviteToken: 'totally-wrong-token-that-does-not-match',
+      responderTeamId: '00000000-0000-0000-0000-000000000001',
+      responderInstance: 'http://localhost:8081',
+    };
+    bru.setVar('requestBody', JSON.stringify(body));
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/negotiations/{{freshSessionId}}/join
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 400
+}
+
+tests {
+  const { expect } = require('chai');
+  test('rejects invalid invite token', () => {
+    expect(res.status).to.equal(400);
+  });
+}

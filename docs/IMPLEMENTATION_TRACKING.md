@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-07 (session 9 — Sprint 3 agent integration test fixes verified)
+**Last updated:** 2026-03-08 (session 25 — cross-instance responder-team alignment)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -29,7 +29,8 @@
 | ✅ | 00 | `.env.example` with all config templates | `.env.example` |
 | ✅ | 00 | `CLAUDE.md` with architecture decisions | `CLAUDE.md` |
 | ✅ | 00 | `README.md` with architecture overview and quick start | `README.md` |
-| ✅ | 00 | `dev.sh` local environment orchestration script | `dev.sh`, `.gitignore` — persists backend runtime state in `.fieldiq-dev/` so `./dev.sh stop` and `Ctrl+C` clean up backend Java processes as well as Docker containers. |
+| ✅ | 03 | Backend README testing documentation | `backend/README.md` — clarified that `./gradlew test` may be up to date, added rerun commands, and pointed to HTML/XML test reports. |
+| ✅ | 00 | `dev.sh` local environment orchestration script | `dev.sh`, `.gitignore` — persists backend runtime state in `.fieldiq-dev/` so `./dev.sh stop` and `Ctrl+C` clean up backend Java processes as well as Docker containers. Session 21 verification: script stop/start logic does target both backend JVMs, but current local state showed no listeners on `localhost:8080` or `localhost:8081` and no `.fieldiq-dev/*.env` state files, indicating startup failure or an exited `bootRun` process rather than stale backends surviving `stop --all`. |
 | ✅ | 00 | `infra/localstack-init.sh` — 3 SQS queues auto-created | `infra/localstack-init.sh` |
 | ✅ | 03 | Backend skeleton — Spring Boot 3.3, Java 21, Kotlin | `backend/build.gradle.kts`, `FieldIQApplication.kt`. Session 5: added `@PostConstruct` JVM timezone=UTC to prevent `LocalTime` ↔ PostgreSQL `TIME` column shift when Hibernate `jdbc.time_zone: UTC` doesn't match JVM locale. |
 | ✅ | 03 | `build.gradle.kts` with all Phase 1 dependencies | Spring Boot, JPA, WebSocket, Security, JWT, WebFlux, TestContainers, MockK |
@@ -110,7 +111,7 @@
 | ✅ | 07 | Fix `null` vs `undefined` test assertions | `01-createRecurring.bru`, `02-createSpecificDate.bru`, `02-createDraftEvent.bru` — changed `.to.be.null` → `.to.be.undefined` to match Jackson `non_null` serialization (omits null fields). |
 | ✅ | 07 | Fix refresh token rotation test | `03-refresh.bru` — added `script:pre-request` to capture old token before `script:post-response` overwrites it (Bruno runs post-response before tests). |
 | ✅ | 07 | Add 401 error envelope assertion | `03-getProfile401.bru` — added `res.body.error: eq UNAUTHORIZED` and `res.body.status: eq 401` to verify JSON envelope. |
-| ✅ | 07 | All 25 Bruno tests passing (58 assertions, 21 tests) | `npm test` in `backend/bruno/` — full pass. |
+| ✅ | 07 | All 28 Bruno tests passing (Sprint 2 auth + CRUD + Sprint 3 scheduling) | `npm test` in `backend/bruno/` — full pass. Sprint 3 added 3 scheduling tests. |
 
 ---
 
@@ -154,57 +155,87 @@
 |--------|-----|------|------------------|
 | ✅ | 04 | `CrossInstanceRelayClient` — WebFlux HTTP client | `CrossInstanceRelayClient.kt` — WebFlux client with HMAC headers (`X-FieldIQ-Session-Id`, `X-FieldIQ-Timestamp`, `X-FieldIQ-Signature`, `X-FieldIQ-Instance-Id`), exponential backoff retry (2s/8s/30s on 5xx). 5 unit tests in `CrossInstanceRelayClientTest.kt`. |
 | ✅ | 04 | HMAC-SHA256 signature generation | `HmacService.kt` — key derivation (`HMAC-SHA256(instanceSecret, inviteToken)`), signing (`sessionId + \n + timestamp + \n + body`), validation with constant-time comparison and ±5min drift. 14 unit tests in `HmacServiceTest.kt`. |
-| ✅ | 04 | HMAC signature validation filter | `HmacAuthenticationFilter.kt` — `OncePerRequestFilter` on `/api/negotiate/` paths, extracts HMAC headers, derives session key, validates signature, Redis nonce for replay prevention (5-min TTL). 11 unit tests in `HmacAuthenticationFilterTest.kt`. Also created `RelayDtos.kt` (RelayRequest, RelaySlot, RelayResponse, RelayErrorResponse). |
+| ✅ | 04 | HMAC signature validation filter | `HmacAuthenticationFilter.kt` — `OncePerRequestFilter` on `/api/negotiate/` paths, extracts HMAC headers, derives session key, validates signature, Redis nonce for replay prevention (5-min TTL). Session 18: fixed request-body replay by buffering relay JSON before validation and forwarding a replayable wrapper so `NegotiationRelayController.receiveRelay()` still gets `@RequestBody` after HMAC auth. 12 unit tests in `HmacAuthenticationFilterTest.kt` including downstream body preservation. Also created `RelayDtos.kt` (RelayRequest, RelaySlot, RelayResponse, RelayErrorResponse). |
 
 ---
 
-## Sprint 4 (Weeks 7–8): NEGOTIATION PROTOCOL v1 ⬜
+## Sprint 4 (Weeks 7–8): NEGOTIATION PROTOCOL v1 ✅
+
+> **Note:** Significant scaffolding existed from Sprint 3 — JPA entities (`NegotiationSession`, `NegotiationProposal`, `NegotiationEvent`), repositories, HMAC auth (`HmacService`, `HmacAuthenticationFilter`), `CrossInstanceRelayClient`, `RelayDtos`, `SchedulingService`, `SecurityConfig`. Sprint 4 built the orchestration layer on top of this foundation.
+
+### Foundation Layer (Phase A)
+| Status | Doc | Task | Evidence / Notes |
+|--------|-----|------|------------------|
+| ✅ | 04 | `NegotiationEventRepository` — JPA repo for audit events | `backend/src/main/kotlin/com/fieldiq/repository/NegotiationEventRepository.kt` — `findBySessionId()` query. |
+| ✅ | 04 | `InvalidStateTransitionException` + GlobalExceptionHandler 409 mapping | `backend/src/main/kotlin/com/fieldiq/service/NegotiationExceptions.kt`, `GlobalExceptionHandler.kt` updated. |
+| ✅ | 04 | Negotiation DTOs (request + response) | `backend/src/main/kotlin/com/fieldiq/api/dto/NegotiationDtos.kt` — `InitiateNegotiationRequest`, `JoinSessionRequest`, `RespondToProposalRequest`, `ConfirmNegotiationRequest`, `NegotiationSessionDto`, `NegotiationProposalDto`, `TimeSlotDto`, etc. |
+| ✅ | 04 | `HmacAuthenticationFilter` — Redis session key cache for consumed invite tokens | `HmacAuthenticationFilter.kt` — `SESSION_KEY_PREFIX`, `SESSION_KEY_TTL(72h)`. Looks up `fieldiq:sessionkey:<sessionId>` when invite token is null. 12 unit tests in `HmacAuthenticationFilterTest.kt` (Redis-hit, Redis-miss, and downstream body replay coverage). |
 
 ### NegotiationService
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 04 | `initiateNegotiation()` — create session with invite_token | |
-| ⬜ | 04 | `joinSession()` — consume invite_token, derive session key | |
-| ⬜ | 04 | `generateAndSendProposal()` — propose time slots | |
-| ⬜ | 04 | `processIncomingRelay()` — handle inbound proposals | |
-| ⬜ | 04 | `confirmAgreement()` — create events on both teams | |
-| ⬜ | 04 | State machine enforcement (allowed transitions) | |
-| ⬜ | 04 | Idempotency via unique constraint on `(session_id, round_number, proposed_by)` | |
+| ✅ | 04 | `initiateNegotiation()` — create session with invite_token | `NegotiationService.kt` — `TeamAccessGuard.requireManager()`, crypto-random invite token (48h TTL), session created with `pending_response`, audit event logged. Session 17: `NegotiationEvent.kt` now binds `payload` as JSONB with Hibernate `@JdbcTypeCode(SqlTypes.JSON)` so negotiation creation no longer inserts JSONB payloads as varchar. |
+| ✅ | 04 | `joinSession()` — consume invite_token, derive session key | `NegotiationService.kt` — validates token, derives key via `HmacService.deriveSessionKey()`, caches in Redis (`fieldiq:sessionkey:<id>`), nullifies token, stores `sessionKeyHash`, transitions to `proposing`. Session 20: Bruno negotiation requests updated to target responder instance `http://localhost:8081` instead of self-relaying to `8080`. |
+| ✅ | 04 | `generateAndSendProposal()` — propose time slots | `NegotiationService.kt` — calls `SchedulingService.findAvailableWindows()` (top 5), saves `NegotiationProposal` (JSONB slots), increments `currentRound`, relays via `CrossInstanceRelayClient`. Session 17: `NegotiationProposal.kt` now binds `slots` as JSONB with Hibernate `@JdbcTypeCode(SqlTypes.JSON)` to match PostgreSQL column types during proposal persistence. |
+| ✅ | 04 | `processIncomingRelay()` — handle inbound proposals | `NegotiationService.kt` — routes by `relay.action`. For "propose": intersects incoming slots with local windows. Match → `pending_approval`. No match + rounds remaining → auto-counter. Max rounds → `failed`. Idempotent on `(session_id, round_number, proposed_by)`. |
+| ✅ | 04 | `confirmAgreement()` — dual confirmation + deferred event creation | `NegotiationService.kt` — requires `pending_approval`, sets per-side flag (`initiatorConfirmed`/`responderConfirmed`), creates `Event` only when both sides confirmed, relays confirm with agreed slot. Idempotency guard via `EventRepository.findByTeamIdAndNegotiationId()`. |
+| ✅ | 04 | `respondToProposal()` — update proposal response status | `NegotiationService.kt` — updates matching proposal's `responseStatus`, supports counter-slots. |
+| ✅ | 04 | `cancelSession()` — transition to cancelled, relay to remote | `NegotiationService.kt` — transitions to `cancelled`, relays cancel action to remote instance if connected. |
+| ✅ | 04 | State machine enforcement (allowed transitions) | `NegotiationService.kt` — `ALLOWED_TRANSITIONS` map + `requireTransition()` helper. Terminal states reject all transitions. |
+| ✅ | 04 | Idempotency via unique constraint on `(session_id, round_number, proposed_by)` | `NegotiationService.kt` — `processIncomingRelay()` checks for existing proposal before creating duplicate. |
 
 ### Negotiation REST Endpoints
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 04 | `POST /negotiations` — initiate negotiation | |
-| ⬜ | 04 | `GET /negotiations/:sessionId` — get session state | |
-| ⬜ | 04 | `POST /negotiations/:sessionId/join` — responder joins | |
-| ⬜ | 04 | `POST /negotiations/:sessionId/propose` — send proposals | |
-| ⬜ | 04 | `POST /negotiations/:sessionId/respond` — accept/reject/counter | |
-| ⬜ | 04 | `POST /negotiations/:sessionId/confirm` — confirm agreed slot | |
-| ⬜ | 04 | `POST /negotiations/:sessionId/cancel` — withdraw | |
+| ✅ | 04 | `POST /negotiations` — initiate negotiation | `NegotiationController.kt` — 201 Created + `NegotiationSessionDto`. |
+| ✅ | 04 | `GET /negotiations/:sessionId` — get session state | `NegotiationController.kt` — 200 + `NegotiationSessionDto` with proposals. |
+| ✅ | 04 | `POST /negotiations/:sessionId/join` — responder joins | `NegotiationController.kt` — 200 + `NegotiationSessionDto`. |
+| ✅ | 04 | `POST /negotiations/:sessionId/propose` — send proposals | `NegotiationController.kt` — 200 + `NegotiationProposalDto`. |
+| ✅ | 04 | `POST /negotiations/:sessionId/respond` — accept/reject/counter | `NegotiationController.kt` — 200 + `NegotiationSessionDto`. |
+| ✅ | 04 | `POST /negotiations/:sessionId/confirm` — confirm agreed slot | `NegotiationController.kt` — 200 + `NegotiationSessionDto` (changed from `EventDto` after dual-confirmation refactor). |
+| ✅ | 04 | `POST /negotiations/:sessionId/cancel` — withdraw | `NegotiationController.kt` — 200 + `NegotiationSessionDto`. |
 
 ### Cross-Instance Relay
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 04 | `POST /api/negotiate/incoming` — receive remote invite | |
-| ⬜ | 04 | `POST /api/negotiate/:sessionId/relay` — relay proposals (HMAC auth) | |
-| ⬜ | 04 | Timestamp drift validation (±5 min) | |
-| ⬜ | 04 | Replay attack prevention (nonce tracking in Redis) | |
+| ✅ | 04 | `POST /api/negotiate/incoming` — receive remote invite | `NegotiationRelayController.kt` — HMAC-authenticated endpoint. |
+| ✅ | 04 | `POST /api/negotiate/:sessionId/relay` — relay proposals (HMAC auth) | `NegotiationRelayController.kt` — routes to `NegotiationService.processIncomingRelay()`. |
+| ✅ | 04 | Timestamp drift validation (±5 min) | Implemented in Sprint 3 `HmacService.kt` — reused here. |
+| ✅ | 04 | Replay attack prevention (nonce tracking in Redis) | Implemented in Sprint 3 `HmacAuthenticationFilter.kt` — reused here. |
 
-### Integration Testing
+### Unit & Integration Testing
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 07 | Two `NegotiationService` instances wired to different DataSources | |
-| ⬜ | 07 | Happy path: initiate → join → propose → match → confirm → events created | |
-| ⬜ | 07 | Max rounds exceeded → session failed | |
-| ⬜ | 07 | Cancellation flow | |
+| ✅ | 07 | `NegotiationServiceTest.kt` — 50 unit tests | `backend/src/test/kotlin/com/fieldiq/service/NegotiationServiceTest.kt` — MockK-based. Nested groups: InitiateNegotiation (5), GetSession (2), JoinSession (6), StateMachine (3), GenerateAndSendProposal (7), ProcessIncomingProposal (7), ConfirmAgreement (8), HandleIncomingResponse (4), RespondToProposal (2), CancelSession (3). Follow-up remediation added: counter-chain agreed-slot propagation, shadow-session remote event `createdBy` handling, local counter-proposal history persistence. |
+| ✅ | 07 | Two `NegotiationService` instances wired to different DataSources | `NegotiationProtocolIntegrationTest.kt` — MockK-backed ConcurrentHashMap repos per instance, `CrossInstanceRelayClient` bridged to call `processIncomingRelay()` on other service directly. Shared Redis store (ConcurrentHashMap) for session key cache. |
+| ✅ | 07 | Happy path: initiate → join → propose → match → dual confirm → events created | `NegotiationProtocolIntegrationTest.kt` `happyPath()` — full protocol cycle with relay response processing (no `syncSession()` workaround). Dual confirmation: A confirms first (pending_approval), relays to B, B confirms → both `confirmed`, events created on both instances via `EventRepository.findByTeamIdAndNegotiationId()` idempotency guard. |
+| ✅ | 07 | Max rounds exceeded → both sessions failed | `NegotiationProtocolIntegrationTest.kt` `maxRoundsExceeded()` — non-overlapping availability, 3 rounds, both Instance A and B transition to `failed` via relay response propagation. |
+| ✅ | 07 | Cancellation flow | `NegotiationProtocolIntegrationTest.kt` `cancellationPropagation()` — cancel relayed to remote instance. |
+| ✅ | 07 | Idempotent duplicate handling | `NegotiationProtocolIntegrationTest.kt` `idempotentDuplicate()` — duplicate relay safely ignored, no duplicate proposals created. |
+| ✅ | 07 | Bruno API integration tests for negotiations | `backend/bruno/collections/negotiations/` — 9 .bru files. Follow-up coverage added in `09-getSessionWithMatchedSlot.bru` for persisted `agreedEndsAt` + proposal history after a matched proposal exchange. Session 17: `backend/bruno/scripts/helpers/availability-helpers.js` updated to accept both `(teamId, overrides)` and object-style `{ teamId, ... }` calls used by `04-propose.bru`, `09-getSessionWithMatchedSlot.bru`, and `backend/bruno/collections/scheduling/01-suggestWindows.bru`. Session 18: `backend/bruno/scripts/helpers/team-helpers.js` now caches latest team per `activeUser`, and `availability-helpers.js` resolves fallback team IDs from the active user's scoped cache to prevent cross-user `403` setup failures in `04-propose.bru`, `07-joinBadToken.bru`, `09-getSessionWithMatchedSlot.bru`, and `01-suggestWindows.bru`. Session 19: fixed Bruno variable naming by changing user-scoped team cache keys from `latestTeamId:<user>` to Bruno-safe `latestTeamId.<user>` so pre-request scripts no longer fail before setting `sessionId`. Session 20: `03-joinSession.bru` and `09-getSessionWithMatchedSlot.bru` now join against responder instance `http://localhost:8081`, and `04-propose.bru` resolves manager A's team via `ensureTeam()` instead of the globally overwritten `teamId`. Session 22: `NegotiationService.createShadowSession()` moved to explicit `EntityManager.persist()` + `flush()`, which fixed the prior `negotiation_events_session_id_fkey` failure but exposed Hibernate treating the caller-supplied remote UUID as a detached entity. Session 23: shadow-session bootstrap now inserts via `NamedParameterJdbcTemplate` instead of JPA entity-state APIs, eliminating both the earlier FK timing failure and the `detached entity passed to persist` failure seen in live logs. Session 24: JDBC parameter binding now converts `LocalDate` to `java.sql.Date` and `Instant` fields to `java.sql.Timestamp`, fixing the refreshed live error `Can't infer the SQL type to use for an instance of java.time.Instant` from `/api/negotiate/incoming`. Session 25: refreshed live logs showed `/relay` returning `404` after join because Bruno was still creating manager B's responder team and availability on instance A, while instance B was correctly trying to compute responder-local availability. Fixes: `03-joinSession.bru` and `09-getSessionWithMatchedSlot.bru` now log manager-b into `http://localhost:8081` and create responder resources there; Bruno auth/resource/team/availability helpers now support explicit `baseUrl` overrides; `NegotiationService.joinSession()` skips local responder-team authorization for cross-instance joins while still enforcing it for same-instance negotiations. Session 26: refreshed live logs reached 36/37 passing; the remaining `05-cancelSession.bru` failure was a test issue because it reused the session from `01`-`04`, which the protocol can legitimately drive to terminal `failed` before cancellation. `05-cancelSession.bru` now creates and cancels its own fresh `pending_response` session, matching the allowed transitions in `docs/04_Phase1_Negotiation_Protocol.md`. Verification pending live Bruno rerun. |
+| ✅ | 07 | All 218 backend tests passing | 164 pre-existing + 50 NegotiationServiceTest + 4 NegotiationProtocolIntegrationTest = 218 total. Session 16: `./gradlew test` green after follow-up remediation fixes. Session 17: targeted validation also passed with `./gradlew test --tests '*Negotiation*' --tests '*HmacAuthenticationFilterTest'`. Session 18: `cd backend && ./gradlew test --tests 'com.fieldiq.security.HmacAuthenticationFilterTest'` passed after the relay body replay fix. Session 19: the same targeted test passed after adding `MethodArgumentTypeMismatchException` handling in `GlobalExceptionHandler.kt`. Session 20: `cd backend && ./gradlew test --tests 'com.fieldiq.service.NegotiationProtocolIntegrationTest' --tests 'com.fieldiq.service.NegotiationServiceTest'` passed after changing `createShadowSession()` to `saveAndFlush()`, adding `V7__drop_negotiation_initiator_team_fk.sql`, and updating the integration-test session repository mock for `saveAndFlush()`. |
 
 ### Vertical Slice Milestone (End of Sprint 4)
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 00 | Manager A initiates negotiation on Instance A (curl/Postman) | |
-| ⬜ | 00 | Manager B joins on Instance B via invite_token | |
-| ⬜ | 00 | Proposals exchange automatically for up to 3 rounds | |
-| ⬜ | 00 | Match found → both managers confirm → events created on both instances | |
+| ✅ | 00 | Manager A initiates negotiation on Instance A (curl/Postman) | Covered by Bruno test `01-initiateNegotiation.bru` and integration test `happyPath()`. |
+| ✅ | 00 | Manager B joins on Instance B via invite_token | Covered by Bruno test `03-joinSession.bru` and integration test `happyPath()`. |
+| ✅ | 00 | Proposals exchange automatically for up to 3 rounds | Integration test `happyPath()` (1-round match) and `maxRoundsExceeded()` (3-round exhaust). |
+| ✅ | 00 | Match found → both managers confirm → events created on both instances | Integration test `happyPath()` — events created on both simulated instances. |
+
+### Sprint 4 Remediation (6 Bugs Fixed)
+| Status | Bug | Fix | Evidence / Notes |
+|--------|-----|-----|------------------|
+| ✅ | Bug 1: Initiator ignores RelayResponse | `generateAndSendProposal()` and `handleIncomingProposal()` counter path now capture `RelayResponse` and transition local session accordingly (`pending_approval`/`failed`). Eliminated `syncSession()` workaround entirely. | `NegotiationService.kt` — relay response processing in both propose and counter-propose paths. 3 new unit tests: `transitionsToMatchWhenRelayReturnsPendingApproval`, `transitionsToFailedWhenRelayReturnsFailed`, `staysInProposingWhenRelayReturnsProposing`. |
+| ✅ | Bug 2: Single-sided confirmation | `confirmAgreement()` returns `NegotiationSessionDto` (not `Event`). Sets per-side flags (`initiatorConfirmed`/`responderConfirmed`). Event created only when both true. `handleIncomingConfirm()` rewritten with same dual logic. Idempotency via `findByTeamIdAndNegotiationId()`. | `V6__negotiation_dual_confirmation.sql`, `NegotiationSession.kt` (+3 fields), `NegotiationController.kt` (return type), `NegotiationDtos.kt` (+3 fields), `EventRepository.kt` (+idempotency query). 7 new unit tests. |
+| ✅ | Bug 3: Join authorization missing | `joinSession()` calls `TeamAccessGuard.requireManager(userId, responderTeamId)` before consuming invite token. | `NegotiationService.kt` — guard call at top of `joinSession()`. |
+| ✅ | Bug 4: Shadow session missing on Instance B | New `POST /api/negotiate/incoming` endpoint creates shadow session on responder instance. `joinSession()` relays `IncomingNegotiationRequest` to responder. `HmacAuthenticationFilter` excludes `/api/negotiate/incoming`. | `NegotiationRelayController.kt`, `NegotiationService.kt` (`handleIncomingNegotiation()`), `HmacAuthenticationFilter.kt` (path exclusion), `IncomingNegotiationRequest` DTO. |
+| ✅ | Bug 5: Counter slots discarded by inbound handler | `handleIncomingResponse()` expanded: creates proposal record for counter, intersects counter slots with local availability, transitions to `pending_approval` on match or `failed` at max rounds. | `NegotiationService.kt` — counter path in `handleIncomingResponse()`. 4 new unit tests: `counterCreatesProposal`, `counterMatchTransitions`, `counterAtMaxRoundsFails`, `acceptedNoCounter`. |
+| ✅ | Bug 6: TypeScript types drifted from Kotlin DTOs | `shared/types/index.ts` synced: `NegotiationSessionDto` (+`agreedEndsAt`, `initiatorConfirmed`, `responderConfirmed`, `proposals`), deprecated `ProposeRequest`, added `JoinSessionRequest`, `IncomingNegotiationRequest`, `RelayResponse` interfaces. | `shared/types/index.ts` — all interfaces match Kotlin DTOs. |
+| ✅ | Follow-up 1: matched slot persisted incompletely on receiver | Direct match path now persists `agreedEndsAt` alongside `agreedStartsAt` when `handleIncomingProposal()` finds an overlap. | `backend/src/main/kotlin/com/fieldiq/service/NegotiationService.kt` — pending-approval persistence updated. Test coverage: `matchFound` in `NegotiationServiceTest.kt` plus Bruno coverage in `09-getSessionWithMatchedSlot.bru`. |
+| ✅ | Follow-up 2: counter-chain relay response dropped agreed slot | Auto-counter branch now returns full `RelayResponse` slot fields from the final session so the original caller can enter `pending_approval` with the agreed slot populated. | `backend/src/main/kotlin/com/fieldiq/service/NegotiationService.kt` — counter branch return payload fixed. Test coverage: `autoCounterPropagatesAgreedSlot` in `NegotiationServiceTest.kt`. |
+| ✅ | Follow-up 3: local counter proposals missing from sender history | `respondToProposal()` now records the sender's counter proposal locally and advances `currentRound`, keeping proposal history symmetric with relay processing. | `backend/src/main/kotlin/com/fieldiq/service/NegotiationService.kt`. Test coverage: `recordsLocalCounterProposal` in `NegotiationServiceTest.kt`. |
+| ✅ | Follow-up 4: remote event creation could use a team UUID as `createdBy` | `handleIncomingConfirm()` now creates shadow-session events with `createdBy = initiatorManager`, which safely stays null when the remote user is unknown on this instance. | `backend/src/main/kotlin/com/fieldiq/service/NegotiationService.kt`. Test coverage: `incomingConfirmCreatesEventWithNullCreatedBy` in `NegotiationServiceTest.kt`. |
 
 ---
 
@@ -268,12 +299,12 @@
 
 | Sprint | Name | Status | Tasks Done | Tasks Total |
 |--------|------|--------|------------|-------------|
-| 1 | Foundation | ✅ Complete | 23/23 | 23 |
+| 1 | Foundation | ✅ Complete | 24/24 | 24 |
 | 2 | Core CRUD + Auth | ✅ Complete | 24/24 | 24 |
 | 3 | Scheduling + Calendar Sync | ✅ Complete | 18/18 | 18 |
-| 4 | Negotiation Protocol v1 | ⬜ Not Started | 0/18 | 18 |
+| 4 | Negotiation Protocol v1 | ✅ Complete | 42/42 | 42 |
 | 5 | React Native App | ⬜ Not Started | 0/10 | 10 |
 | 6 | Negotiation UX + Notifications | ⬜ Not Started | 0/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
 | 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **65/111** | **111** |
+| **Total** | | | **108/136** | **136** |

@@ -1,0 +1,87 @@
+meta {
+  name: 01-initiateNegotiation
+  type: http
+  seq: 1
+}
+
+docs {
+  Initiates a new cross-team scheduling negotiation. Creates a session
+  with a single-use invite token in "pending_response" status.
+  Stores sessionId and inviteToken for subsequent tests.
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    const team = await ensureTeam();
+    bru.setVar('teamId', team.id);
+
+    // Build a date range starting next week, spanning 2 weeks
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() + 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 14);
+    const fmt = (d) => d.toISOString().split('T')[0];
+
+    const body = {
+      teamId: team.id,
+      dateRangeStart: fmt(start),
+      dateRangeEnd: fmt(end),
+      durationMinutes: 90,
+    };
+    bru.setVar('requestBody', JSON.stringify(body));
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/negotiations
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 201
+  res.body.id: isString
+  res.body.status: eq pending_response
+  res.body.requestedDurationMinutes: eq 90
+}
+
+tests {
+  const { expect } = require('chai');
+  test('session has invite token', () => {
+    expect(res.body).to.have.property('inviteToken');
+    expect(res.body.inviteToken).to.be.a('string');
+    expect(res.body.inviteToken.length).to.be.greaterThan(10);
+  });
+  test('session has date range fields', () => {
+    expect(res.body).to.have.property('requestedDateRangeStart');
+    expect(res.body).to.have.property('requestedDateRangeEnd');
+  });
+  test('session has round tracking', () => {
+    expect(res.body.currentRound).to.equal(0);
+    expect(res.body.maxRounds).to.equal(3);
+  });
+  test('session has expiry', () => {
+    expect(res.body).to.have.property('expiresAt');
+    expect(res.body.expiresAt).to.be.a('string');
+  });
+}
+
+script:post-response {
+  if (res.body.id) {
+    bru.setVar('sessionId', res.body.id);
+    bru.setVar('inviteToken', res.body.inviteToken);
+  }
+}

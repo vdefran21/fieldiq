@@ -75,4 +75,18 @@ interface EventRepository : JpaRepository<Event, UUID> {
         """
     )
     fun findOverlappingEvents(teamId: UUID, rangeStart: Instant, rangeEnd: Instant): List<Event>
+
+    /**
+     * Finds an existing event for a team and negotiation session.
+     *
+     * This is the idempotency guard for deferred event creation after dual confirmation.
+     * When both managers confirm, event creation calls this first — if an event already
+     * exists (e.g., from a retried confirm relay), the existing event is reused instead
+     * of creating a duplicate.
+     *
+     * @param teamId The UUID of the team.
+     * @param negotiationId The UUID of the negotiation session that produced this event.
+     * @return The existing event, or null if none exists for this (teamId, negotiationId) pair.
+     */
+    fun findByTeamIdAndNegotiationId(teamId: UUID, negotiationId: UUID): Event?
 }

@@ -14,8 +14,8 @@ const { login } = require('./auth-helpers.js');
 /**
  * Make an authenticated GET request.
  */
-const getResource = async (resourcePath) => {
-  const baseUrl = bru.getEnvVar('baseUrl');
+const getResource = async (resourcePath, baseUrlOverride) => {
+  const baseUrl = baseUrlOverride || bru.getEnvVar('baseUrl');
   const token = bru.getVar('accessToken');
   if (!token) throw new Error('No accessToken set. Run loginAs() first.');
 
@@ -29,8 +29,8 @@ const getResource = async (resourcePath) => {
 /**
  * Make an authenticated POST request.
  */
-const postResource = async (resourcePath, data) => {
-  const baseUrl = bru.getEnvVar('baseUrl');
+const postResource = async (resourcePath, data, baseUrlOverride) => {
+  const baseUrl = baseUrlOverride || bru.getEnvVar('baseUrl');
   const token = bru.getVar('accessToken');
   if (!token) throw new Error('No accessToken set. Run loginAs() first.');
 
@@ -47,8 +47,8 @@ const postResource = async (resourcePath, data) => {
 /**
  * Make an authenticated PATCH request.
  */
-const patchResource = async (resourcePath, data) => {
-  const baseUrl = bru.getEnvVar('baseUrl');
+const patchResource = async (resourcePath, data, baseUrlOverride) => {
+  const baseUrl = baseUrlOverride || bru.getEnvVar('baseUrl');
   const token = bru.getVar('accessToken');
   if (!token) throw new Error('No accessToken set. Run loginAs() first.');
 
@@ -65,8 +65,8 @@ const patchResource = async (resourcePath, data) => {
 /**
  * Make an authenticated DELETE request.
  */
-const deleteResource = async (resourcePath) => {
-  const baseUrl = bru.getEnvVar('baseUrl');
+const deleteResource = async (resourcePath, baseUrlOverride) => {
+  const baseUrl = baseUrlOverride || bru.getEnvVar('baseUrl');
   const token = bru.getVar('accessToken');
   if (!token) throw new Error('No accessToken set. Run loginAs() first.');
 

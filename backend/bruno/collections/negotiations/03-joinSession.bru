@@ -1,0 +1,65 @@
+meta {
+  name: 03-joinSession
+  type: http
+  seq: 3
+}
+
+docs {
+  Joins the negotiation session using the invite token from test 01.
+  Creates a second team as manager-b, then joins using the token.
+  Verifies the session transitions to "proposing" and the invite token is consumed.
+}
+
+script:pre-request {
+  const { loginAs, switchUser, createTeamWith } = require('./scripts/test-helpers.js');
+  try {
+    const responderBaseUrl = 'http://localhost:8081';
+
+    // Create a second team as manager-b (the responder)
+    await loginAs('manager-b', { baseUrl: responderBaseUrl });
+    const resp = await createTeamWith({ name: 'Responder Team U12' }, { baseUrl: responderBaseUrl });
+    bru.setVar('responderTeamId', resp.data.id);
+
+    const body = {
+      inviteToken: bru.getVar('inviteToken'),
+      responderTeamId: resp.data.id,
+      responderInstance: responderBaseUrl,
+    };
+    bru.setVar('requestBody', JSON.stringify(body));
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/negotiations/{{sessionId}}/join
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq proposing
+}
+
+tests {
+  const { expect } = require('chai');
+  test('responder team is set', () => {
+    expect(res.body.responderTeamId).to.be.a('string');
+    expect(res.body.responderTeamId).to.equal(bru.getVar('responderTeamId'));
+  });
+  test('invite token is consumed (null)', () => {
+    expect(res.body.inviteToken).to.be.oneOf([null, undefined]);
+  });
+  test('session is in proposing status', () => {
+    expect(res.body.status).to.equal('proposing');
+  });
+}

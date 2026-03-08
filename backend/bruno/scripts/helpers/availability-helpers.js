@@ -3,21 +3,41 @@
  */
 
 const { postResource, deleteResource, getCreateAvailabilityBody } = require('../resource-utils.js');
+const { getActiveUserTeamVar } = require('./team-helpers.js');
 
 /**
  * Create an availability window with optional overrides.
  * Stores latestAvailabilityId and availabilityId in Bruno collection variables.
  *
- * @param {string} teamId - Team UUID
+ * Accepts either `(teamId, overrides)` or a single object that contains `teamId`
+ * plus any body overrides.
+ *
+ * @param {string|object} teamIdOrOverrides - Team UUID or an overrides object with teamId
  * @param {object} overrides - Fields to override in the default availability body
+ * @param {object} [options] - Optional request settings
+ * @param {string} [options.baseUrl] - Override base URL for cross-instance setup
  * @returns {object} - Axios response from POST /users/me/availability
  */
-async function createAvailabilityWith(teamId, overrides = {}) {
-  const tid = teamId || bru.getVar('latestTeamId');
-  if (!tid) throw new Error('No teamId provided and no latestTeamId set');
+async function createAvailabilityWith(teamIdOrOverrides, overrides = {}, options = {}) {
+  const userTeamVar = getActiveUserTeamVar();
+  const latestTeamId = userTeamVar ? bru.getVar(userTeamVar) : bru.getVar('latestTeamId');
+  const useObjectStyle = teamIdOrOverrides && typeof teamIdOrOverrides === 'object' && !Array.isArray(teamIdOrOverrides);
+  const baseUrl = useObjectStyle
+    ? teamIdOrOverrides.baseUrl || options.baseUrl
+    : overrides.baseUrl || options.baseUrl;
+  const tid = useObjectStyle
+    ? teamIdOrOverrides.teamId || latestTeamId
+    : teamIdOrOverrides || latestTeamId;
+  if (!tid) throw new Error('No teamId provided and no latestTeamId set for the active user');
 
-  const body = getCreateAvailabilityBody(tid, overrides);
-  const resp = await postResource('users/me/availability', body);
+  const bodyOverrides = useObjectStyle
+    ? { ...teamIdOrOverrides }
+    : { ...overrides };
+  delete bodyOverrides.teamId;
+  delete bodyOverrides.baseUrl;
+
+  const body = getCreateAvailabilityBody(tid, bodyOverrides);
+  const resp = await postResource('users/me/availability', body, baseUrl);
   const id = resp.data.id;
   if (id) {
     bru.setVar('latestAvailabilityId', id);

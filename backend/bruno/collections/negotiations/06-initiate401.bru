@@ -1,0 +1,46 @@
+meta {
+  name: 06-initiate401
+  type: http
+  seq: 6
+}
+
+docs {
+  Verifies that the negotiations endpoint rejects unauthenticated requests
+  with 401 Unauthorized.
+}
+
+script:pre-request {
+  bru.setVar('badToken', 'invalid-token-abc123');
+  const body = {
+    teamId: '00000000-0000-0000-0000-000000000000',
+    dateRangeStart: '2026-04-01',
+    dateRangeEnd: '2026-04-15',
+    durationMinutes: 90,
+  };
+  bru.setVar('requestBody', JSON.stringify(body));
+}
+
+post {
+  url: {{baseUrl}}/negotiations
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{badToken}}
+}
+
+body:json {
+  {{requestBody}}
+}
+
+assert {
+  res.status: eq 401
+}
+
+tests {
+  const { expect } = require('chai');
+  test('returns 401 for invalid token', () => {
+    expect(res.status).to.equal(401);
+  });
+}

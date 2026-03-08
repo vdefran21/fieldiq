@@ -1,0 +1,65 @@
+meta {
+  name: 05-cancelSession
+  type: http
+  seq: 5
+}
+
+docs {
+  Cancels a fresh negotiation session before the responder joins.
+  Verifies the session transitions from "pending_response" to "cancelled".
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, postResource } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+
+    const team = await ensureTeam();
+
+    // Create a standalone session for this test so cancellation does not depend
+    // on the earlier proposal flow, which can legitimately reach a terminal state.
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() + 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 14);
+    const fmt = (d) => d.toISOString().split('T')[0];
+
+    const resp = await postResource('negotiations', {
+      teamId: team.id,
+      dateRangeStart: fmt(start),
+      dateRangeEnd: fmt(end),
+      durationMinutes: 90,
+    });
+
+    bru.setVar('cancelSessionId', resp.data.id);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/negotiations/{{cancelSessionId}}/cancel
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq cancelled
+}
+
+tests {
+  const { expect } = require('chai');
+  test('session is cancelled', () => {
+    expect(res.body.status).to.equal('cancelled');
+  });
+  test('session retains identity fields', () => {
+    expect(res.body.id).to.equal(bru.getVar('cancelSessionId'));
+    expect(res.body).to.have.property('initiatorTeamId');
+  });
+}

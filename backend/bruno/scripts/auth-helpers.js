@@ -48,8 +48,8 @@ const verifyOtp = async (baseUrl, phone, otp) => {
  * @param {string} [phone] - Phone number to authenticate. Defaults to devPhone env var.
  * @returns {object} - The auth response data { accessToken, refreshToken, user }
  */
-const login = async (phone) => {
-  const baseUrl = bru.getEnvVar('baseUrl');
+const login = async (phone, baseUrlOverride) => {
+  const baseUrl = baseUrlOverride || bru.getEnvVar('baseUrl');
   const devPhone = phone || bru.getEnvVar('devPhone');
   const devOtp = bru.getEnvVar('devOtp');
 

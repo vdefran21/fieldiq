@@ -3,6 +3,7 @@ package com.fieldiq.api
 import com.fieldiq.api.dto.ErrorResponse
 import com.fieldiq.service.GoogleOAuthException
 import com.fieldiq.service.InvalidOtpException
+import com.fieldiq.service.InvalidStateTransitionException
 import com.fieldiq.service.RateLimitExceededException
 import com.fieldiq.service.RelayException
 import jakarta.persistence.EntityNotFoundException
@@ -13,6 +14,7 @@ import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 
 /**
  * Global exception handler for all REST controllers.
@@ -109,6 +111,27 @@ class GlobalExceptionHandler {
     }
 
     /**
+     * Handles path and query parameter type conversion failures.
+     *
+     * This most commonly occurs when a route expects a UUID but receives an
+     * invalid string. Returning 400 keeps malformed client requests out of the
+     * generic 500 handler and makes Bruno failures easier to diagnose.
+     *
+     * @return 400 Bad Request with parameter conversion details.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleTypeMismatch(ex: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
+        val parameterName = ex.name
+        val requiredType = ex.requiredType?.simpleName ?: "required type"
+        val value = ex.value?.toString() ?: "null"
+        val message = "Parameter '$parameterName' must be a valid $requiredType: '$value'"
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse("BAD_REQUEST", message, 400))
+    }
+
+    /**
      * Handles Google OAuth flow failures.
      *
      * @return 502 Bad Gateway with error details (the upstream Google API failed).
@@ -119,6 +142,24 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.BAD_GATEWAY)
             .body(ErrorResponse("GOOGLE_OAUTH_ERROR", ex.message ?: "Google OAuth failed", 502))
+    }
+
+    /**
+     * Handles invalid negotiation state machine transitions.
+     *
+     * Thrown when an action is attempted on a negotiation session in a state
+     * that does not allow that action (e.g., confirming a session still in
+     * "proposing" status, or any transition from a terminal state).
+     *
+     * @return 409 Conflict with error details.
+     */
+    @ExceptionHandler(InvalidStateTransitionException::class)
+    fun handleInvalidStateTransition(
+        ex: InvalidStateTransitionException,
+    ): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse("INVALID_STATE_TRANSITION", ex.message ?: "Invalid state transition", 409))
     }
 
     /**

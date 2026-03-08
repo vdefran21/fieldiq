@@ -1,5 +1,7 @@
 package com.fieldiq.domain
 
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import jakarta.persistence.*
 import java.time.Instant
 import java.util.UUID
@@ -59,6 +61,7 @@ data class NegotiationProposal(
     @Column(name = "round_number", nullable = false)
     val roundNumber: Int = 1,
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     val slots: String,
 

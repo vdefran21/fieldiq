@@ -1,0 +1,102 @@
+meta {
+  name: 09-getSessionWithMatchedSlot
+  type: http
+  seq: 9
+}
+
+docs {
+  Creates an independent negotiation scenario that reaches pending_approval,
+  then fetches the session to verify proposal history and the full agreed slot
+  (startsAt + endsAt) are persisted in the session DTO.
+}
+
+script:pre-request {
+  const { loginAs, ensureTeam, createTeamWith, createAvailabilityWith, postResource } = require('./scripts/test-helpers.js');
+  try {
+    const responderBaseUrl = 'http://localhost:8081';
+
+    await loginAs('manager-a');
+    const initiatorTeam = await ensureTeam();
+
+    await createAvailabilityWith({
+      teamId: initiatorTeam.id,
+      dayOfWeek: 6,
+      startTime: '09:00',
+      endTime: '17:00',
+      windowType: 'available',
+    });
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() + 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 14);
+    const fmt = (d) => d.toISOString().split('T')[0];
+
+    const initResp = await postResource('negotiations', {
+      teamId: initiatorTeam.id,
+      dateRangeStart: fmt(start),
+      dateRangeEnd: fmt(end),
+      durationMinutes: 90,
+    });
+
+    const sessionId = initResp.data.id;
+    const inviteToken = initResp.data.inviteToken;
+
+    await loginAs('manager-b', { baseUrl: responderBaseUrl });
+    const responderTeamResp = await createTeamWith(
+      { name: 'Matched Slot Responder U12' },
+      { baseUrl: responderBaseUrl }
+    );
+    const responderTeamId = responderTeamResp.data.id;
+
+    await createAvailabilityWith({
+      teamId: responderTeamId,
+      baseUrl: responderBaseUrl,
+      dayOfWeek: 6,
+      startTime: '09:00',
+      endTime: '17:00',
+      windowType: 'available',
+    });
+
+    await postResource(`negotiations/${sessionId}/join`, {
+      inviteToken,
+      responderTeamId,
+      responderInstance: responderBaseUrl,
+    });
+
+    await loginAs('manager-a');
+    await postResource(`negotiations/${sessionId}/propose`, null);
+    bru.setVar('matchedSessionId', sessionId);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/negotiations/{{matchedSessionId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{matchedSessionId}}
+  res.body.status: eq pending_approval
+}
+
+tests {
+  const { expect } = require('chai');
+  test('session persists the full agreed slot', () => {
+    expect(res.body.agreedStartsAt).to.be.a('string');
+    expect(res.body.agreedEndsAt).to.be.a('string');
+  });
+  test('session includes proposal history after proposal exchange', () => {
+    expect(res.body.proposals).to.be.an('array');
+    expect(res.body.proposals.length).to.be.greaterThan(0);
+  });
+}

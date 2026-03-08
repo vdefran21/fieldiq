@@ -1,0 +1,40 @@
+meta {
+  name: 08-getSession404
+  type: http
+  seq: 8
+}
+
+docs {
+  Verifies that fetching a non-existent negotiation session returns 404.
+}
+
+script:pre-request {
+  const { loginAs } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+    bru.setVar('fakeSessionId', '00000000-0000-0000-0000-000000000099');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/negotiations/{{fakeSessionId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 404
+}
+
+tests {
+  const { expect } = require('chai');
+  test('returns 404 for non-existent session', () => {
+    expect(res.status).to.equal(404);
+  });
+}

@@ -1,5 +1,7 @@
 package com.fieldiq.domain
 
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import jakarta.persistence.*
 import java.time.Instant
 import java.util.UUID
@@ -53,6 +55,7 @@ data class NegotiationEvent(
 
     val actor: String? = null,
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     val payload: String? = null,
 

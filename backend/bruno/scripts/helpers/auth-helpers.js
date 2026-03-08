@@ -26,15 +26,19 @@ const USER_PHONES = {
  * Stores accessToken, refreshToken, userId in Bruno collection variables.
  *
  * @param {string} userAlias - Key from USER_PHONES (e.g. 'manager-a', 'parent')
+ * @param {object} [options] - Optional login settings
+ * @param {string} [options.baseUrl] - Override base URL when authenticating against a non-default instance
  */
-async function loginAs(userAlias) {
+async function loginAs(userAlias, options = {}) {
   utils.initEnv();
   const phone = USER_PHONES[userAlias];
   if (!phone) throw new Error(`Unknown user alias: ${userAlias}. Valid: ${Object.keys(USER_PHONES).join(', ')}`);
+  const baseUrl = options.baseUrl || bru.getEnvVar('baseUrl');
 
   // Clear existing token to force re-auth as this user
   const currentUser = bru.getVar('activeUser');
-  if (currentUser === userAlias) {
+  const currentBaseUrl = bru.getVar('activeBaseUrl');
+  if (currentUser === userAlias && currentBaseUrl === baseUrl) {
     // Already logged in as this user, verify token still valid
     const existingToken = bru.getVar('accessToken');
     if (existingToken) {
@@ -44,8 +48,9 @@ async function loginAs(userAlias) {
   }
 
   bru.setVar('accessToken', '');
-  const authData = await login(phone);
+  const authData = await login(phone, baseUrl);
   bru.setVar('activeUser', userAlias);
+  bru.setVar('activeBaseUrl', baseUrl);
   console.log(`Logged in as ${userAlias} (userId: ${authData.user.id})`);
   return authData;
 }
