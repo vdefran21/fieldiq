@@ -8,6 +8,10 @@ import {
   handleSyncCalendar,
   SyncCalendarTask,
 } from './workers/calendar-sync.worker';
+import {
+  handleSendNotification,
+  NotificationTask,
+} from './workers/notification.worker';
 
 /**
  * Result of processing a single SQS message.
@@ -52,7 +56,7 @@ export interface PollResult {
  *
  * **Supported task types:**
  * - `SYNC_CALENDAR` → {@link handleSyncCalendar}
- * - `SEND_NOTIFICATION` → Sprint 6
+ * - `SEND_NOTIFICATION` → {@link handleSendNotification}
  * - `SEND_REMINDERS` → Sprint 6
  *
  * Unknown task types log a warning but do not throw, so the message
@@ -66,6 +70,10 @@ export async function dispatchTask(
   switch (body.taskType) {
     case 'SYNC_CALENDAR':
       await handleSyncCalendar(body as unknown as SyncCalendarTask);
+      break;
+
+    case 'SEND_NOTIFICATION':
+      await handleSendNotification(body as unknown as NotificationTask);
       break;
 
     // Sprint 6: SEND_NOTIFICATION, SEND_REMINDERS

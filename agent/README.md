@@ -11,7 +11,7 @@ The agent layer handles tasks that are async, external, or AI-powered:
 | Task Type | Worker | Status | Description |
 |-----------|--------|--------|-------------|
 | `SYNC_CALENDAR` | `calendar-sync.worker.ts` | Implemented | Fetches Google Calendar FreeBusy data, writes availability windows to shared DB |
-| `SEND_NOTIFICATION` | — | Sprint 6 | Push notifications via Expo/FCM |
+| `SEND_NOTIFICATION` | `notification.worker.ts` | Implemented (basic) | Resolves registered devices and logs a delivery attempt per device |
 | `SEND_REMINDERS` | — | Sprint 6 | AI-drafted reminder messages via Claude Haiku |
 
 The backend enqueues tasks to SQS. The agent polls, dispatches by `taskType`, and writes results to the shared PostgreSQL database. The agent never calls backend REST endpoints.
@@ -117,9 +117,11 @@ agent/
 │   ├── db.ts                       # PostgreSQL connection pool (max 5 connections)
 │   ├── encryption.ts               # AES-256-GCM token decryption (matches backend format)
 │   ├── workers/
-│   │   └── calendar-sync.worker.ts # SYNC_CALENDAR handler
+│   │   ├── calendar-sync.worker.ts # SYNC_CALENDAR handler
+│   │   └── notification.worker.ts  # SEND_NOTIFICATION handler
 │   ├── __tests__/                  # Unit tests (all deps mocked)
 │   │   ├── calendar-sync.worker.test.ts
+│   │   ├── notification.worker.test.ts
 │   │   └── encryption.test.ts
 │   └── __integration__/            # Integration tests (real Postgres + SQS)
 │       ├── setup/

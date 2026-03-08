@@ -218,6 +218,8 @@ export interface EventDto {
   opponentName?: string;
   /** UUID of the negotiation session that created this event, if any. */
   negotiationId?: string;
+  /** Relative download URL for an iCalendar export when the event is scheduled. */
+  icsUrl?: string;
 }
 
 /**

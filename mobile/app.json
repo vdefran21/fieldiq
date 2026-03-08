@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "FieldIQ",
+    "slug": "fieldiq",
+    "scheme": "fieldiq",
+    "orientation": "portrait",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fieldiq.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -25,6 +25,7 @@ import jakarta.validation.constraints.Pattern
  * @property status Lifecycle state: "draft", "scheduled", "cancelled", "completed".
  * @property opponentName Opponent team name (for games).
  * @property negotiationId UUID of the negotiation session that created this event, if any.
+ * @property icsUrl Relative download URL for an iCalendar file when the event has a scheduled start time.
  */
 data class EventDto(
     val id: String,
@@ -38,6 +39,7 @@ data class EventDto(
     val status: String,
     val opponentName: String? = null,
     val negotiationId: String? = null,
+    val icsUrl: String? = null,
 ) {
     companion object {
         /**
@@ -58,6 +60,7 @@ data class EventDto(
             status = event.status,
             opponentName = event.opponentName,
             negotiationId = event.negotiationId?.toString(),
+            icsUrl = if (event.startsAt != null) "/events/${event.id}/ics" else null,
         )
     }
 }

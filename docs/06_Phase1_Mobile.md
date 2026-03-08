@@ -8,11 +8,17 @@ iOS first. Keep it minimal -- the AI does the work, the UI just shows results an
 
 ```
 /login                  Phone number entry -> OTP verify -> JWT stored in SecureStore
-/(app)/index            Schedule feed: upcoming events, pending negotiations
-/(app)/team             Roster list, member availability status, RSVP tracking
+/(app)/index            Schedule feed: upcoming events, pending negotiations, create-team CTA when account has no teams
+/(app)/team             Roster list, member availability status, RSVP tracking, create-team CTA when account has no teams
 /(app)/negotiate/:id    Negotiation approval screen (the key UX moment)
 /(app)/settings         Calendar connect, notification preferences, push token registration
+/app/create-team        Lightweight first-team onboarding (name required, sport/age/season optional)
 ```
+
+First-login behavior matters for Phase 1 validation:
+- if the authenticated manager has no teams yet, schedule and roster should not dead-end
+- both screens should offer a fast create-team path so the dashboard can populate without separate backend setup
+- push registration should be treated as optional in local development when Expo project metadata is not configured
 
 ---
 

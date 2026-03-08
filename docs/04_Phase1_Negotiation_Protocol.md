@@ -17,8 +17,10 @@ on FieldIQ Instance A                       on FieldIQ Instance B (or same insta
      containing a deep-link with the invite_token
 
 2. Manager B opens deep-link -> joins session
-   POST /negotiations/:id/join (on Instance B)
+   POST /negotiations/:id/join (called on Instance A, initiated by Manager B from Instance B's app)
    - Validates invite_token (single-use -- consumed on join)
+   - Instance A bootstraps a shadow session on Instance B via
+     POST /api/negotiate/incoming before consuming the token
    - Both instances derive session HMAC key from invite_token
    - Status transitions: pending_response -> proposing
    - If Team B is NOT on FieldIQ: fallback to manual
@@ -88,6 +90,30 @@ cancelled -> (terminal)
 
 ## Cross-Instance Request/Response Contract
 
+**Incoming bootstrap request (Instance A -> Instance B before relay traffic):**
+```
+POST /api/negotiate/incoming
+Body:
+{
+  "sessionId": "uuid",
+  "inviteToken": "single-use-bearer-secret",
+  "initiatorTeamId": "uuid",
+  "initiatorInstance": "http://localhost:8080",
+  "responderTeamId": "uuid",
+  "responderInstance": "http://localhost:8081",
+  "requestedDateRangeStart": "2026-04-01",
+  "requestedDateRangeEnd": "2026-04-15",
+  "requestedDurationMinutes": 90,
+  "maxRounds": 3,
+  "expiresAt": "2026-04-03T18:30:00Z"
+}
+```
+
+`/api/negotiate/incoming` is intentionally excluded from HMAC validation because the
+responder-side local session does not exist yet. The invite token acts as the bearer
+credential for this bootstrap call; after the shadow session is created, all subsequent
+relay traffic uses the derived HMAC session key.
+
 **Relay request (Instance A -> Instance B):**
 ```
 POST /api/negotiate/:sessionId/relay
@@ -121,7 +147,10 @@ Body:
 {
   "status": "received",
   "sessionStatus": "proposing",
-  "currentRound": 2
+  "currentRound": 2,
+  "agreedStartsAt": "2026-04-05T14:00:00Z",
+  "agreedEndsAt": "2026-04-05T15:30:00Z",
+  "agreedLocation": "Bethesda Soccer Complex Field 3"
 }
 ```
 

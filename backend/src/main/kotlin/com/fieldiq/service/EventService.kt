@@ -12,9 +12,12 @@ import com.fieldiq.repository.EventResponseRepository
 import com.fieldiq.repository.UserRepository
 import jakarta.persistence.EntityNotFoundException
 import org.slf4j.LoggerFactory
+import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
@@ -221,4 +224,87 @@ class EventService(
             EventResponseDto.from(response, usersById[response.userId])
         }
     }
+
+    /**
+     * Builds an iCalendar export for a scheduled event.
+     *
+     * Phase 1 intentionally avoids calendar write-back, so confirmed games expose a
+     * downloadable `.ics` file instead. Only active members of the owning team may
+     * access the export.
+     *
+     * @param userId UUID of the authenticated user requesting the export.
+     * @param eventId UUID of the event to export.
+     * @return Binary `.ics` payload with filename and content type metadata.
+     * @throws EntityNotFoundException If the event does not exist.
+     * @throws org.springframework.security.access.AccessDeniedException If the user is not an active member.
+     * @throws IllegalStateException If the event does not yet have a scheduled start time.
+     */
+    fun buildIcsExport(userId: UUID, eventId: UUID): IcsExport {
+        val event = eventRepository.findById(eventId)
+            .orElseThrow { EntityNotFoundException("Event $eventId not found") }
+
+        teamAccessGuard.requireActiveMember(userId, event.teamId)
+
+        val startsAt = event.startsAt ?: throw IllegalStateException("Event $eventId is not yet scheduled")
+        val endsAt = event.endsAt ?: startsAt.plusSeconds(90 * 60)
+        val summary = event.title ?: event.opponentName?.let { "Game vs $it" }
+            ?: event.eventType.replaceFirstChar { it.uppercase() }
+        val formatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+        val description = buildString {
+            append("FieldIQ event")
+            if (event.locationNotes != null) {
+                append("\\n")
+                append(event.locationNotes)
+            }
+        }
+
+        val payload = buildString {
+            appendLine("BEGIN:VCALENDAR")
+            appendLine("VERSION:2.0")
+            appendLine("PRODID:-//FieldIQ//Phase1//EN")
+            appendLine("CALSCALE:GREGORIAN")
+            appendLine("BEGIN:VEVENT")
+            appendLine("UID:${event.id}@fieldiq")
+            appendLine("DTSTAMP:${formatter.format(Instant.now())}")
+            appendLine("DTSTART:${formatter.format(startsAt)}")
+            appendLine("DTEND:${formatter.format(endsAt)}")
+            appendLine("SUMMARY:${escapeIcs(summary)}")
+            if (event.location != null) appendLine("LOCATION:${escapeIcs(event.location)}")
+            appendLine("DESCRIPTION:${escapeIcs(description)}")
+            appendLine("STATUS:CONFIRMED")
+            appendLine("END:VEVENT")
+            appendLine("END:VCALENDAR")
+        }
+
+        return IcsExport(
+            filename = "fieldiq-event-${event.id}.ics",
+            contentType = MediaType.parseMediaType("text/calendar; charset=utf-8"),
+            body = payload.toByteArray(Charsets.UTF_8),
+        )
+    }
+
+    /**
+     * Escapes freeform text for inclusion in an iCalendar payload.
+     *
+     * @param value Unescaped domain text.
+     * @return RFC 5545-safe text for iCalendar fields.
+     */
+    private fun escapeIcs(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
 }
+
+/**
+ * Binary iCalendar export returned by [EventService.buildIcsExport].
+ *
+ * @property filename Suggested download filename for the HTTP response.
+ * @property contentType Media type for the exported `.ics` payload.
+ * @property body UTF-8 bytes of the iCalendar file.
+ */
+data class IcsExport(
+    val filename: String,
+    val contentType: MediaType,
+    val body: ByteArray,
+)

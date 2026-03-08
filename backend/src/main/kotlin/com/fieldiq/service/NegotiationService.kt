@@ -24,6 +24,7 @@ import com.fieldiq.repository.NegotiationProposalRepository
 import com.fieldiq.repository.NegotiationSessionRepository
 import com.fieldiq.security.HmacAuthenticationFilter
 import com.fieldiq.security.HmacService
+import com.fieldiq.websocket.NegotiationRealtimePublisher
 import jakarta.persistence.EntityNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
@@ -92,6 +93,8 @@ class NegotiationService(
     private val redisTemplate: StringRedisTemplate,
     private val objectMapper: ObjectMapper,
     private val namedParameterJdbcTemplate: NamedParameterJdbcTemplate,
+    private val realtimePublisher: NegotiationRealtimePublisher? = null,
+    private val notificationQueuePublisher: NotificationQueuePublisher? = null,
 ) {
 
     private val log = LoggerFactory.getLogger(NegotiationService::class.java)
@@ -283,6 +286,7 @@ class NegotiationService(
         val saved = sessionRepo.save(updated)
 
         logEvent(session.id, "responder_joined", "responder")
+        publishSessionUpdate(saved, "responder_joined")
         log.info(
             "Responder joined negotiation: session={}, responderTeam={}",
             sessionId,
@@ -521,6 +525,7 @@ class NegotiationService(
                 )
                 sessionRepo.save(matched)
                 logEvent(sessionId, "match_found_via_relay", actor)
+                publishSessionUpdate(matched, "match_found_via_relay")
             }
             "failed" -> {
                 val failed = updatedSession.copy(
@@ -530,6 +535,7 @@ class NegotiationService(
                 )
                 sessionRepo.save(failed)
                 logEvent(sessionId, "session_failed_via_relay", actor)
+                publishSessionUpdate(failed, "session_failed_via_relay")
             }
             // "proposing" = counter is coming as a separate relay, no local update needed
         }
@@ -652,6 +658,7 @@ class NegotiationService(
                 ),
             ))
             log.info("Match found: session={}, slot={}-{}", session.id, bestMatch.startsAt, bestMatch.endsAt)
+            publishSessionUpdate(updated, "match_found")
 
             return RelayResponse(
                 sessionStatus = "pending_approval",
@@ -671,6 +678,7 @@ class NegotiationService(
             sessionRepo.save(failed)
             logEvent(session.id, "session_failed", "system", """{"reason":"max_rounds_exceeded"}""")
             log.info("Negotiation failed (max rounds): session={}", session.id)
+            publishSessionUpdate(failed, "session_failed")
 
             return RelayResponse(sessionStatus = "failed", currentRound = relay.roundNumber)
         }
@@ -720,6 +728,7 @@ class NegotiationService(
                     )
                     sessionRepo.save(finalSession)
                     logEvent(session.id, "match_found_via_relay", localActor)
+                    publishSessionUpdate(finalSession, "match_found_via_relay")
                 }
                 "failed" -> {
                     finalSession = updatedSession.copy(
@@ -729,6 +738,7 @@ class NegotiationService(
                     )
                     sessionRepo.save(finalSession)
                     logEvent(session.id, "session_failed_via_relay", localActor)
+                    publishSessionUpdate(finalSession, "session_failed_via_relay")
                 }
                 // "proposing" = further counter expected, no additional local update
             }
@@ -894,10 +904,12 @@ class NegotiationService(
 
             logEvent(session.id, "session_confirmed", "system", """{"trigger":"remote_confirm"}""")
             log.info("Negotiation confirmed via remote confirm: session={}", session.id)
+            publishSessionUpdate(confirmed, "session_confirmed")
             confirmed
         } else {
             sessionRepo.save(updatedSession)
             logEvent(session.id, "confirmation_received", relay.actor)
+            publishSessionUpdate(updatedSession, "confirmation_received")
             updatedSession
         }
 
@@ -916,6 +928,7 @@ class NegotiationService(
         sessionRepo.save(cancelled)
         logEvent(session.id, "session_cancelled", relay.actor, """{"reason":"remote_cancellation"}""")
         log.info("Negotiation cancelled by remote: session={}", session.id)
+        publishSessionUpdate(cancelled, "session_cancelled")
 
         return RelayResponse(sessionStatus = "cancelled", currentRound = session.currentRound)
     }
@@ -997,11 +1010,13 @@ class NegotiationService(
             )
             logEvent(sessionId, "session_confirmed", actor, """{"eventId":"${event.id}"}""")
             log.info("Negotiation confirmed: session={}, event={}", sessionId, event.id)
+            publishSessionUpdate(confirmed, "session_confirmed", event)
             confirmed
         } else {
             sessionRepo.save(updatedSession) // stays in pending_approval
             logEvent(sessionId, "confirmation_recorded", actor)
             log.info("Confirmation recorded (waiting for other side): session={}, actor={}", sessionId, actor)
+            publishSessionUpdate(updatedSession, "confirmation_recorded")
             updatedSession
         }
 
@@ -1135,6 +1150,7 @@ class NegotiationService(
 
         logEvent(sessionId, "session_cancelled", actor)
         log.info("Negotiation cancelled: session={}, by={}", sessionId, actor)
+        publishSessionUpdate(saved, "session_cancelled")
 
         // Relay cancellation to remote instance
         val targetUrl = if (actor == "initiator") session.responderInstance else session.initiatorInstance
@@ -1309,6 +1325,25 @@ class NegotiationService(
                 payload = payload,
             ),
         )
+    }
+
+    /**
+     * Emits realtime and async notification side effects for a session transition.
+     *
+     * @param session Latest persisted session snapshot.
+     * @param eventName Short event key describing the transition.
+     * @param event Optional event created as part of the transition.
+     */
+    private fun publishSessionUpdate(
+        session: NegotiationSession,
+        eventName: String,
+        event: Event? = null,
+    ) {
+        realtimePublisher?.publishUpdate(session, eventName)
+        notificationQueuePublisher?.enqueueNegotiationUpdate(session, eventName)
+        if (event != null) {
+            notificationQueuePublisher?.enqueueEventCreated(event)
+        }
     }
 
     /**

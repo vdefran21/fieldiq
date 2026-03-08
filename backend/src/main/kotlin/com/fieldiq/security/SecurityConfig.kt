@@ -78,6 +78,7 @@ class SecurityConfig(
                     // Public endpoints
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/ws/**").permitAll()
                     // Cross-instance relay endpoints (HMAC-authenticated, not JWT)
                     .requestMatchers("/api/negotiate/**").permitAll()
                     // Everything else requires authentication

@@ -8,6 +8,7 @@ import com.fieldiq.api.dto.UpdateEventRequest
 import com.fieldiq.security.authenticatedUserId
 import com.fieldiq.service.EventService
 import jakarta.validation.Valid
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -135,5 +136,25 @@ class EventController(
         val userId = authenticatedUserId()
         val responses = eventService.getEventResponses(userId, eventId)
         return ResponseEntity.ok(responses)
+    }
+
+    /**
+     * Downloads an event as an iCalendar file.
+     *
+     * This is the Phase 1 "Add to Calendar" path for confirmed games and scheduled
+     * events, avoiding Google Calendar write-back while still giving managers a
+     * portable calendar artifact.
+     *
+     * @param eventId The UUID of the event to export.
+     * @return 200 OK with `text/calendar` content and an attachment filename.
+     */
+    @GetMapping("/events/{eventId}/ics", produces = ["text/calendar"])
+    fun downloadIcs(@PathVariable eventId: UUID): ResponseEntity<ByteArray> {
+        val userId = authenticatedUserId()
+        val export = eventService.buildIcsExport(userId, eventId)
+        return ResponseEntity.ok()
+            .contentType(export.contentType)
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${export.filename}\"")
+            .body(export.body)
     }
 }

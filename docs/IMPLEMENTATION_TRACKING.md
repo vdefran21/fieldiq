@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-08 (session 25 — cross-instance responder-team alignment)
+**Last updated:** 2026-03-08 (session 31 — mobile team onboarding, push-config guard, and negotiation approval states)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -239,34 +239,35 @@
 
 ---
 
-## Sprint 5 (Weeks 9–10): REACT NATIVE APP ⬜
+## Sprint 5 (Weeks 9–10): REACT NATIVE APP 🔧
 
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 06 | Expo project setup with TypeScript | |
-| ⬜ | 06 | Expo Router file-based routing (`(auth)/`, `(app)/`) | |
-| ⬜ | 06 | Login screen + OTP verification flow | |
-| ⬜ | 06 | SecureStore token management (JWT + refresh) | |
-| ⬜ | 06 | Schedule feed — events list (`(app)/index.tsx`) | |
-| ⬜ | 06 | Team/roster screen (`(app)/team.tsx`) | |
-| ⬜ | 06 | Settings screen + Google Calendar connect (`(app)/settings.tsx`) | |
-| ⬜ | 06 | API client (`services/api.ts`) with auth interceptor | |
-| ⬜ | 06 | Push token registration on app launch | |
+| ✅ | 06 | Expo project setup with TypeScript | `mobile/package.json`, `mobile/app.json`, `mobile/tsconfig.json`, `mobile/babel.config.js`, `mobile/expo-env.d.ts`. Session 27: upgraded mobile workspace from Expo SDK 53 to SDK 54 (`expo@54.0.33`, `expo-router@6.0.23`, `react-native@0.81.5`, aligned Expo modules/tooling) so current Expo Go on iOS can open the project again. Session 28: added `mobile/README.md` and LAN-aware launcher script `mobile/scripts/run-expo-with-lan.js`, with `start:lan` / `ios:lan` npm scripts to auto-set `EXPO_PUBLIC_API_URL` from the Mac's detected LAN IP. Session 29: added Expo Router native runtime dependencies required at bundle time (`expo-linking`, `expo-constants`, `@expo/metro-runtime`, `react-native-screens`, `react-native-gesture-handler`, `react-native-reanimated`) after Expo Go failed with `Unable to resolve module expo-linking`. Verification: `cd mobile && npx expo install --check` → "Dependencies are up to date", `cd mobile && npm run lint` passed. |
+| ✅ | 06 | Expo Router file-based routing (`(auth)/`, `(app)/`) | `mobile/app/_layout.tsx`, `mobile/app/index.tsx`, `mobile/app/(auth)/login.tsx`, `mobile/app/(app)/_layout.tsx`. Session 31: added hidden authenticated route `mobile/app/(app)/create-team.tsx` for first-team onboarding from empty states. |
+| ✅ | 06 | Login screen + OTP verification flow | `mobile/app/(auth)/login.tsx`, `mobile/services/api.ts` — requests OTP and verifies via live API client. Session 30: added submit-time US phone normalization (`4107010177` -> `+14107010177`) so users do not need to type `+1`, and fixed the mobile fetch helper to treat empty `200 OK` OTP responses as success instead of throwing `JSON Parse error: Unexpected end of input`. |
+| ✅ | 06 | SecureStore token management (JWT + refresh) | `mobile/services/session.ts`, `mobile/services/api.ts` |
+| ✅ | 06 | Schedule feed — events list (`(app)/index.tsx`) | `mobile/app/(app)/index.tsx`, `mobile/hooks/usePrimaryTeam.ts` — loads the first accessible team, normalizes loading/error/empty states, and offers a create-team CTA when the manager has no teams yet. |
+| ✅ | 06 | Team/roster screen (`(app)/team.tsx`) | `mobile/app/(app)/team.tsx`, `mobile/hooks/usePrimaryTeam.ts` — roster now mirrors schedule state handling with loading/error/empty states and the same first-team onboarding CTA. |
+| 🔧 | 06 | Settings screen + Google Calendar connect (`(app)/settings.tsx`) | `mobile/app/(app)/settings.tsx`, `mobile/services/notifications.ts`, `mobile/app.json` — profile refresh/retry added, device registration now reports readable push states, and missing Expo project IDs no longer crash local development. Calendar connect remains placeholder copy only. |
+| ✅ | 06 | API client (`services/api.ts`) with auth interceptor | `mobile/services/api.ts` — bearer auth, refresh retry, teams/events/negotiation/device methods |
+| ✅ | 06 | Push token registration on app launch | `mobile/app/(app)/_layout.tsx`, `mobile/services/notifications.ts`, `mobile/app.json` — launch-time registration now skips cleanly when Expo push metadata is not configured and only registers with the backend when a real Expo token is available. |
+| ✅ | 06 | First-team onboarding / create-team flow | `mobile/app/(app)/create-team.tsx`, `mobile/hooks/usePrimaryTeam.ts`, `mobile/app/(app)/index.tsx`, `mobile/app/(app)/team.tsx`, `docs/06_Phase1_Mobile.md`, `mobile/README.md` — managers can now create a first team directly from mobile empty states instead of requiring backend pre-seeding. Verification: `cd mobile && npm run lint` and `cd mobile && npx tsc --noEmit` both passed in session 31. |
 | ⬜ | 06 | "Finding mutual time..." animated component (Lottie/Animated) | |
 
 ---
 
-## Sprint 6 (Weeks 11–12): NEGOTIATION UX + NOTIFICATIONS ⬜
+## Sprint 6 (Weeks 11–12): NEGOTIATION UX + NOTIFICATIONS 🔧
 
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| ⬜ | 06 | Negotiation approval screen (`(app)/negotiate.tsx`) — the key UX moment | |
-| ⬜ | 03 | WebSocket client for real-time negotiation updates | |
-| ⬜ | 05 | Push notifications via Expo (FCM for iOS) | |
-| ⬜ | 05 | `notification.worker.ts` — SQS consumer for `SEND_NOTIFICATION` | |
+| 🔧 | 06 | Negotiation approval screen (`(app)/negotiate.tsx`) — the key UX moment | `mobile/app/(app)/negotiate/[id].tsx` — renders proposing, pending-approval, confirmed, failed, and cancelled states; supports live refresh via WebSocket, manager confirmation of the agreed slot, cancellation, and `.ics` calendar CTA lookup for confirmed events. Still missing richer proposal/counter UX and animated "Finding mutual time..." treatment. |
+| ✅ | 03 | WebSocket client for real-time negotiation updates | Backend: `backend/src/main/kotlin/com/fieldiq/websocket/` — raw WebSocket endpoint + handshake auth + realtime publisher. Mobile: `mobile/services/negotiation-websocket.ts`. |
+| 🔧 | 05 | Push notifications via Expo (FCM for iOS) | `mobile/services/notifications.ts`, `mobile/app.json`, `mobile/app/(app)/settings.tsx` now treat missing Expo `projectId` as a non-fatal local-dev state and surface readable device-registration messaging. Backend registration exists (`UserController.kt`, `UserDeviceService.kt`), but worker transport still logs delivery attempts instead of calling Expo's push API. |
+| ✅ | 05 | `notification.worker.ts` — SQS consumer for `SEND_NOTIFICATION` | `agent/src/workers/notification.worker.ts`, `agent/src/__tests__/notification.worker.test.ts`, `agent/src/task-dispatcher.ts` |
 | ⬜ | 05 | `CommunicationAgent` (Claude Haiku) for reminder + outcome message drafting | |
 | ⬜ | 06 | RSVP tracking UI on event detail screen | |
-| ⬜ | 06 | `.ics` download link for confirmed games | |
+| ✅ | 06 | `.ics` download link for confirmed games | Backend: `EventController.kt` `/events/{eventId}/ics`, `EventService.buildIcsExport()`, `EventDto.icsUrl`; shared types synced in `shared/types/index.ts`. |
 
 ---
 
@@ -303,8 +304,8 @@
 | 2 | Core CRUD + Auth | ✅ Complete | 24/24 | 24 |
 | 3 | Scheduling + Calendar Sync | ✅ Complete | 18/18 | 18 |
 | 4 | Negotiation Protocol v1 | ✅ Complete | 42/42 | 42 |
-| 5 | React Native App | ⬜ Not Started | 0/10 | 10 |
-| 6 | Negotiation UX + Notifications | ⬜ Not Started | 0/7 | 7 |
+| 5 | React Native App | 🔧 In Progress | 9/11 | 11 |
+| 6 | Negotiation UX + Notifications | 🔧 In Progress | 3/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
 | 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **108/136** | **136** |
+| **Total** | | | **120/137** | **137** |
