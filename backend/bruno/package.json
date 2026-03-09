@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "@usebruno/cli": "3.0.2",
-    "@faker-js/faker": "^9.6.0",
+    "@faker-js/faker": "^10.3.0",
     "axios": "^1.8.4"
   },
   "scripts": {
