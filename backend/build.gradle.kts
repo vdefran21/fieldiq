@@ -40,9 +40,9 @@ dependencies {
     implementation("software.amazon.awssdk:secretsmanager:2.25.0")
 
     // JWT
-    implementation("io.jsonwebtoken:jjwt-api:0.12.3")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.3")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.3")
+    implementation("io.jsonwebtoken:jjwt-api:0.13.0")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
 
     // HTTP client (for cross-instance negotiation calls)
     implementation("org.springframework.boot:spring-boot-starter-webflux")
