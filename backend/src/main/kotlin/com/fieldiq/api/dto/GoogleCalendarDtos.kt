@@ -20,3 +20,16 @@ data class CalendarIntegrationStatusResponse(
     val lastSyncedAt: Instant? = null,
     val expiresAt: Instant? = null,
 )
+
+/**
+ * Response DTO for the browser-safe Google OAuth handoff URL.
+ *
+ * Mobile clients cannot attach a bearer token directly to a browser redirect, so
+ * they first call `GET /auth/google/authorize-url` to fetch the fully-qualified
+ * Google consent URL for the authenticated user.
+ *
+ * @property authorizeUrl Google consent screen URL scoped to the current user.
+ */
+data class GoogleAuthorizeUrlResponse(
+    val authorizeUrl: String,
+)

@@ -4,6 +4,7 @@ import com.fieldiq.api.dto.ConfirmNegotiationRequest
 import com.fieldiq.api.dto.InitiateNegotiationRequest
 import com.fieldiq.api.dto.JoinSessionRequest
 import com.fieldiq.api.dto.NegotiationProposalDto
+import com.fieldiq.api.dto.NegotiationSocketTokenResponse
 import com.fieldiq.api.dto.NegotiationSessionDto
 import com.fieldiq.api.dto.RespondToProposalRequest
 import com.fieldiq.security.authenticatedUserId
@@ -74,6 +75,20 @@ class NegotiationController(
         val userId = authenticatedUserId()
         val session = negotiationService.getSession(sessionId, userId)
         return ResponseEntity.ok(session)
+    }
+
+    /**
+     * Exchanges the caller's bearer-authenticated REST session for a short-lived negotiation
+     * WebSocket token scoped to this session only.
+     *
+     * @param sessionId UUID of the negotiation session.
+     * @return 200 OK with the signed socket token and its lifetime.
+     */
+    @PostMapping("/{sessionId}/socket-token")
+    fun socketToken(@PathVariable sessionId: UUID): ResponseEntity<NegotiationSocketTokenResponse> {
+        val userId = authenticatedUserId()
+        val token = negotiationService.createSocketToken(sessionId, userId)
+        return ResponseEntity.ok(token)
     }
 
     /**

@@ -19,6 +19,7 @@ import com.fieldiq.repository.NegotiationEventRepository
 import com.fieldiq.repository.NegotiationProposalRepository
 import com.fieldiq.repository.NegotiationSessionRepository
 import com.fieldiq.security.HmacService
+import com.fieldiq.security.JwtService
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.*
@@ -160,15 +161,17 @@ class NegotiationProtocolIntegrationTest {
         val relayClientB: CrossInstanceRelayClient = mockk(relaxed = true)
         val jdbcA: NamedParameterJdbcTemplate = mockk(relaxed = true)
         val jdbcB: NamedParameterJdbcTemplate = mockk(relaxed = true)
+        val jwtServiceA = JwtService(propsA)
+        val jwtServiceB = JwtService(propsB)
 
         serviceA = NegotiationService(
             sessionRepoA, proposalRepoA, auditRepoA, eventRepoA,
-            schedulingService, relayClientA, teamAccessGuardA, hmacService,
+            schedulingService, relayClientA, teamAccessGuardA, hmacService, jwtServiceA,
             propsA, redisA, objectMapper, jdbcA,
         )
         serviceB = NegotiationService(
             sessionRepoB, proposalRepoB, auditRepoB, eventRepoB,
-            schedulingService, relayClientB, teamAccessGuardB, hmacService,
+            schedulingService, relayClientB, teamAccessGuardB, hmacService, jwtServiceB,
             propsB, redisB, objectMapper, jdbcB,
         )
 

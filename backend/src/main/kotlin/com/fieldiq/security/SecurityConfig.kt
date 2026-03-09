@@ -15,8 +15,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *
  * Configures stateless, JWT-based authentication with three access tiers:
  *
- * 1. **Public endpoints** (auth routes, actuator health): No authentication required.
- *    These handle OTP login, token refresh, and health checks.
+ * 1. **Public endpoints** (OTP auth, Google callback, actuator health): No authentication required.
+ *    These handle OTP login, token refresh, OAuth callback handoff, and health checks.
  *
  * 2. **Cross-instance relay endpoints** (negotiate relay routes): Exempt from JWT auth
  *    because they use HMAC-SHA256 signature authentication instead. The HMAC validation
@@ -76,8 +76,9 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     // Public endpoints
-                    .requestMatchers("/auth/**").permitAll()
-                    .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/auth/request-otp", "/auth/verify-otp", "/auth/refresh", "/auth/logout").permitAll()
+                    .requestMatchers("/auth/google/callback").permitAll()
+                    .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                     .requestMatchers("/ws/**").permitAll()
                     // Cross-instance relay endpoints (HMAC-authenticated, not JWT)
                     .requestMatchers("/api/negotiate/**").permitAll()

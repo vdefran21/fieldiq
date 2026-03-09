@@ -1,0 +1,40 @@
+meta {
+  name: 01-getAuthorizeUrl
+  type: http
+  seq: 1
+}
+
+docs {
+  Returns the Google OAuth consent URL as JSON for the authenticated manager.
+}
+
+script:pre-request {
+  const { loginAs } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+get {
+  url: {{baseUrl}}/auth/google/authorize-url
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.authorizeUrl: isString
+}
+
+tests {
+  const { expect } = require('chai');
+  test('authorize URL points at Google OAuth', () => {
+    expect(res.body.authorizeUrl).to.include('https://accounts.google.com/o/oauth2/v2/auth');
+  });
+}

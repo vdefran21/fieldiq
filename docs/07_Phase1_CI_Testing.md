@@ -79,6 +79,9 @@ jobs:
 - **Redis beans** are conditionally loaded. Test profile sets `spring.data.redis.enabled=false` or uses an embedded Redis alternative. Tests that need Redis use `@ConditionalOnProperty`.
 - **SQS beans** are mocked in test profile. `SqsClient` is replaced with a no-op or in-memory stub.
 - **Agent tests** mock the Anthropic API client and SQS. No external network calls in CI.
+- **Dependency review** runs on pull requests to catch risky dependency changes before merge.
+- **CodeQL** scans Java/Kotlin and JavaScript/TypeScript on pull requests and on `main`.
+- **Dependabot** keeps GitHub Actions, Gradle, and npm dependencies moving on a weekly cadence.
 
 ---
 

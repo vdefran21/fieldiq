@@ -12,11 +12,19 @@ import { createSqsClient, getAgentTasksQueueUrl } from '../../sqs-client';
  * SQS test helpers for integration tests.
  *
  * Uses queue URL from config (not hardcoded) so tests stay aligned
- * with the agent's runtime configuration.
+ * with the agent's runtime configuration. These helpers intentionally use the
+ * same client-construction path as production code to catch endpoint or queue
+ * drift before it reaches runtime.
  */
 
+/**
+ * Shared LocalStack SQS client reused across integration tests in this process.
+ */
 const sqsClient = createSqsClient();
 
+/**
+ * Agent task queue URL used by integration tests.
+ */
 const queueUrl = getAgentTasksQueueUrl();
 
 /**
@@ -28,6 +36,9 @@ export function getSqsClient(): SQSClient {
 
 /**
  * Returns the queue URL from config.
+ *
+ * Tests pass this directly into `pollOnce()` so assertions exercise the same
+ * queue URL resolution path as the runtime bootstrap.
  */
 export function getQueueUrl(): string {
   return queueUrl;
@@ -76,6 +87,9 @@ export async function purgeQueue(): Promise<void> {
 
 /**
  * Returns the approximate number of messages in the queue.
+ *
+ * This counts both visible and in-flight messages so retry-behavior assertions
+ * can detect messages that were intentionally left undeleted after worker failure.
  */
 export async function getQueueMessageCount(): Promise<number> {
   const result = await sqsClient.send(

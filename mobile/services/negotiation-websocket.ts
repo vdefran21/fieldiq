@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { API_BASE } from './api';
-import { getStoredSession } from './session';
+import { API_BASE, api } from './api';
 
 /**
  * Shared negotiation update payload shape from the backend WebSocket stream.
@@ -29,13 +28,17 @@ export function useNegotiationSocket(sessionId: string) {
     let cancelled = false;
 
     async function connect() {
-      const session = await getStoredSession();
-      if (!session || cancelled) {
+      if (!sessionId || cancelled) {
+        return;
+      }
+
+      const socketToken = await api.negotiations.socketToken(sessionId);
+      if (cancelled) {
         return;
       }
 
       const wsBase = API_BASE.replace(/^http/, 'ws');
-      socket = new WebSocket(`${wsBase}/ws/negotiations/${sessionId}?token=${session.accessToken}`);
+      socket = new WebSocket(`${wsBase}/ws/negotiations/${sessionId}?wsToken=${socketToken.token}`);
       socket.onmessage = (event) => {
         setMessage(JSON.parse(event.data) as NegotiationSocketMessage);
       };

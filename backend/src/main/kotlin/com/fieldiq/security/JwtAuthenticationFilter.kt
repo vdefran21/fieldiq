@@ -16,8 +16,8 @@ import org.springframework.web.filter.OncePerRequestFilter
  * [UsernamePasswordAuthenticationToken] in the [SecurityContextHolder] with the
  * user UUID as the principal.
  *
- * Skipped paths: auth, actuator, and cross-instance relay endpoints use either
- * no auth or HMAC-based auth.
+ * Skipped paths: public OTP routes, the Google OAuth callback, actuator health,
+ * and cross-instance relay endpoints use either no auth or HMAC-based auth.
  *
  * If the token is missing, expired, or invalid, the filter continues the chain
  * without setting the SecurityContext. Spring Security will return 401 for
@@ -46,7 +46,11 @@ class JwtAuthenticationFilter(
      */
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.requestURI
-        return path.startsWith("/auth/") ||
+        return path == "/auth/request-otp" ||
+            path == "/auth/verify-otp" ||
+            path == "/auth/refresh" ||
+            path == "/auth/logout" ||
+            path == "/auth/google/callback" ||
             path.startsWith("/actuator/") ||
             path.startsWith("/api/negotiate/")
     }

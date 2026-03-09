@@ -10,6 +10,9 @@ iOS first. Keep it minimal -- the AI does the work, the UI just shows results an
 /login                  Phone number entry -> OTP verify -> JWT stored in SecureStore
 /(app)/index            Schedule feed: upcoming events, pending negotiations, create-team CTA when account has no teams
 /(app)/team             Roster list, member availability status, RSVP tracking, create-team CTA when account has no teams
+/(app)/create-event     Lightweight event creation from the empty schedule state
+/(app)/start-negotiation Minimal negotiation-initiation form that routes into the live session
+/(app)/join-negotiation Cross-instance join flow using shared session details
 /(app)/negotiate/:id    Negotiation approval screen (the key UX moment)
 /(app)/settings         Calendar connect, notification preferences, push token registration
 /app/create-team        Lightweight first-team onboarding (name required, sport/age/season optional)
@@ -18,6 +21,8 @@ iOS first. Keep it minimal -- the AI does the work, the UI just shows results an
 First-login behavior matters for Phase 1 validation:
 - if the authenticated manager has no teams yet, schedule and roster should not dead-end
 - both screens should offer a fast create-team path so the dashboard can populate without separate backend setup
+- once a team exists, the schedule screen should also offer quick actions for `Create event`,
+  `Start negotiation`, and `Join negotiation`
 - push registration should be treated as optional in local development when Expo project metadata is not configured
 
 ---
@@ -44,6 +49,8 @@ export default function NegotiationApprovalScreen() {
   //
   //  Finding a time that works for
   //  both teams...
+  //  [Send proposal round]
+  //  [Suggest different time]
   //  [Cancel Negotiation]
   // ---------------------------------
   //
@@ -99,9 +106,18 @@ export const api = {
   },
   negotiation: {
     initiate: (params: InitiateParams) => ...,
+    join: (sessionId: string, params: JoinSessionParams, initiatorBaseUrl?: string) => ...,
     getSession: (sessionId: string) => ...,
+    propose: (sessionId: string) => ...,
+    respond: (sessionId: string, payload: CounterPayload) => ...,
+    socketToken: (sessionId: string) => ...,
     confirm: (sessionId: string, slot: TimeSlot) => ...,
     cancel: (sessionId: string) => ...,
+  },
+  calendar: {
+    status: () => ...,
+    authorizeUrl: () => ...,
+    disconnect: () => ...,
   },
   devices: {
     register: (expoPushToken: string, platform: string) => ...,

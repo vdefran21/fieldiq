@@ -90,4 +90,12 @@ interface AgentTask {
 // SEND_NOTIFICATION   -> push/SMS/email dispatch (enqueued by backend on state changes)
 ```
 
+The agent runtime should poll both:
+
+- the general agent tasks queue for `SYNC_CALENDAR`
+- the notifications queue for `SEND_NOTIFICATION`
+
+Phase 1 notification delivery now targets Expo's push API directly instead of logging-only
+delivery attempts, while keeping the backend-owned task contract unchanged.
+
 **Note:** `RUN_NEGOTIATION_ROUND` is no longer an agent task. Negotiation rounds are orchestrated by the Kotlin backend (`NegotiationService`), which calls `SchedulingService` directly and relays via `CrossInstanceRelayClient`. The agent layer is only involved if an LLM call is needed for ambiguous conflict resolution (Phase 2).

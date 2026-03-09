@@ -1,7 +1,10 @@
 package com.fieldiq.api
 
 import com.fieldiq.api.dto.CalendarIntegrationStatusResponse
+import com.fieldiq.api.dto.GoogleAuthorizeUrlResponse
+import com.fieldiq.repository.TeamMemberRepository
 import com.fieldiq.security.authenticatedUserId
+import com.fieldiq.service.AgentTaskQueuePublisher
 import com.fieldiq.service.GoogleCalendarService
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -14,12 +17,13 @@ import java.net.URI
  *
  * Handles the Google OAuth 2.0 authorization code flow:
  * 1. [authorize] — redirects the user to Google's consent screen.
- * 2. [callback] — handles Google's redirect with the auth code, exchanges it for tokens.
- * 3. [status] — returns whether the user has connected their calendar.
- * 4. [disconnect] — removes the user's calendar integration.
+ * 2. [authorizeUrl] — returns the same consent URL as JSON for native-app handoff.
+ * 3. [callback] — handles Google's redirect with the auth code, exchanges it for tokens.
+ * 4. [status] — returns whether the user has connected their calendar.
+ * 5. [disconnect] — removes the user's calendar integration.
  *
  * **Auth requirements:**
- * - [authorize] requires JWT auth (user must be logged in before connecting calendar).
+ * - [authorize] and [authorizeUrl] require JWT auth (user must be logged in before connecting calendar).
  * - [callback] is public (Google redirects here, no JWT in the redirect URL).
  *   The user ID is passed via the OAuth `state` parameter.
  * - [status] and [disconnect] require JWT auth.
@@ -32,6 +36,8 @@ import java.net.URI
 @RequestMapping("/auth/google")
 class GoogleCalendarController(
     private val googleCalendarService: GoogleCalendarService,
+    private val teamMemberRepository: TeamMemberRepository,
+    private val agentTaskQueuePublisher: AgentTaskQueuePublisher,
 ) {
 
     private val logger = LoggerFactory.getLogger(GoogleCalendarController::class.java)
@@ -52,6 +58,25 @@ class GoogleCalendarController(
         return ResponseEntity.status(HttpStatus.FOUND)
             .location(URI.create(authorizeUrl))
             .build()
+    }
+
+    /**
+     * Returns the Google OAuth URL as JSON for mobile/browser handoff flows.
+     *
+     * Native clients first call this bearer-authenticated endpoint, then open the returned
+     * URL in the platform browser. This avoids requiring a browser redirect request to carry
+     * the JWT itself.
+     *
+     * @return 200 with the fully-qualified Google consent URL.
+     */
+    @GetMapping("/authorize-url")
+    fun authorizeUrl(): ResponseEntity<GoogleAuthorizeUrlResponse> {
+        val userId = authenticatedUserId()
+        return ResponseEntity.ok(
+            GoogleAuthorizeUrlResponse(
+                authorizeUrl = googleCalendarService.buildAuthorizeUrl(userId),
+            ),
+        )
     }
 
     /**
@@ -96,8 +121,8 @@ class GoogleCalendarController(
         }
 
         googleCalendarService.exchangeCodeForTokens(code, userId)
-
-        // TODO: Enqueue SYNC_CALENDAR SQS task here once agent layer is ready
+        val activeTeamIds = teamMemberRepository.findByUserIdAndIsActiveTrue(userId).map { it.teamId }
+        agentTaskQueuePublisher.enqueueCalendarSync(userId, activeTeamIds)
 
         return ResponseEntity.ok(
             mapOf("status" to "connected", "message" to "Google Calendar connected successfully"),

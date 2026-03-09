@@ -4,6 +4,18 @@ import {
   SyncCalendarTask,
 } from '../workers/calendar-sync.worker';
 
+/**
+ * Unit tests for the calendar-sync worker.
+ *
+ * These tests isolate worker orchestration from external systems by mocking:
+ * - Postgres query execution
+ * - AES token decryption
+ * - Google OAuth and FreeBusy responses
+ *
+ * Integration coverage for the same workflow lives under `src/__integration__/`
+ * and protects the real database and queue contracts.
+ */
+
 // Mock dependencies
 jest.mock('../db', () => ({
   query: jest.fn(),
@@ -42,6 +54,9 @@ const mockQuery = query as jest.MockedFunction<typeof query>;
 const mockDecrypt = decryptToken as jest.MockedFunction<typeof decryptToken>;
 
 describe('calendar-sync.worker', () => {
+  /**
+   * Representative queue payload reused across the worker unit suite.
+   */
   const task: SyncCalendarTask = {
     taskType: 'SYNC_CALENDAR',
     userId: '550e8400-e29b-41d4-a716-446655440000',

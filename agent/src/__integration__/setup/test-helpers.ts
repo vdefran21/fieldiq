@@ -15,12 +15,56 @@ import { query } from '../../db';
  */
 
 /**
+ * Optional organization fields that tests may override when seeding data.
+ */
+interface OrganizationOverrides {
+  /** Explicit UUID for deterministic fixture references. */
+  id?: string;
+  /** Display name stored on the organization row. */
+  name?: string;
+  /** Slug stored in the organizations table. */
+  slug?: string;
+}
+
+/**
+ * Optional team fields that tests may override when seeding data.
+ */
+interface TeamOverrides {
+  /** Explicit UUID for deterministic fixture references. */
+  id?: string;
+  /** Display name stored on the team row. */
+  name?: string;
+}
+
+/**
+ * Optional user fields that tests may override when seeding data.
+ */
+interface UserOverrides {
+  /** Explicit UUID for deterministic fixture references. */
+  id?: string;
+  /** Parent or coach display name stored on the user row. */
+  displayName?: string;
+}
+
+/**
+ * Identifier groups used by cleanup helpers to remove seeded rows safely.
+ */
+interface DeleteTestDataOptions {
+  /** User IDs to delete after dependent rows are removed. */
+  userIds?: string[];
+  /** Team IDs to delete after child rows are removed. */
+  teamIds?: string[];
+  /** Organization IDs to delete after teams are removed. */
+  orgIds?: string[];
+}
+
+/**
  * Inserts an organization row. Required as FK parent for teams.
  *
  * @returns The generated organization UUID.
  */
 export async function insertOrganization(
-  overrides: { id?: string; name?: string; slug?: string } = {},
+  overrides: OrganizationOverrides = {},
 ): Promise<string> {
   const id = overrides.id || crypto.randomUUID();
   const slug = overrides.slug || `test-org-${id.substring(0, 8)}`;
@@ -38,7 +82,7 @@ export async function insertOrganization(
  */
 export async function insertTeam(
   orgId: string,
-  overrides: { id?: string; name?: string } = {},
+  overrides: TeamOverrides = {},
 ): Promise<string> {
   const id = overrides.id || crypto.randomUUID();
   await query(
@@ -55,7 +99,7 @@ export async function insertTeam(
  * @returns The generated user UUID.
  */
 export async function insertUser(
-  overrides: { id?: string; displayName?: string } = {},
+  overrides: UserOverrides = {},
 ): Promise<string> {
   const id = overrides.id || crypto.randomUUID();
   const phone = `+1555${Date.now().toString().slice(-7)}`;
@@ -119,6 +163,8 @@ export async function insertManualAvailabilityWindow(
 
 /**
  * Returns all availability_windows for a user, sorted by date and start time.
+ *
+ * Tests use this to verify exactly what availability data the worker persisted.
  */
 export async function getAvailabilityWindows(userId: string) {
   const result = await query(
@@ -130,6 +176,9 @@ export async function getAvailabilityWindows(userId: string) {
 
 /**
  * Returns the calendar_integrations row for a user, or null if none.
+ *
+ * This is primarily used to assert sync side effects such as `last_synced_at`
+ * and refreshed expiry timestamps.
  */
 export async function getCalendarIntegration(userId: string) {
   const result = await query(
@@ -146,11 +195,7 @@ export async function getCalendarIntegration(userId: string) {
  *
  * Safe alongside dev data — never uses TRUNCATE.
  */
-export async function deleteTestData(opts: {
-  userIds?: string[];
-  teamIds?: string[];
-  orgIds?: string[];
-}): Promise<void> {
+export async function deleteTestData(opts: DeleteTestDataOptions): Promise<void> {
   if (opts.userIds?.length) {
     await query(
       'DELETE FROM availability_windows WHERE user_id = ANY($1::uuid[])',

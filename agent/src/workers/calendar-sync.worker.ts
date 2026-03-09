@@ -10,8 +10,11 @@ import { decryptToken } from '../encryption';
  * or on a 4-hour schedule for periodic re-syncs.
  */
 export interface SyncCalendarTask {
+  /** Task discriminator used by the dispatcher. */
   taskType: 'SYNC_CALENDAR';
+  /** User UUID whose Google Calendar integration should be synchronized. */
   userId: string;
+  /** Team UUID that owns the synced availability windows. */
   teamId: string;
 }
 
@@ -19,8 +22,27 @@ export interface SyncCalendarTask {
  * A busy block from Google Calendar's FreeBusy API.
  */
 interface BusyBlock {
+  /** Inclusive start timestamp for the busy range in ISO 8601 format. */
   start: string;
+  /** Exclusive end timestamp for the busy range in ISO 8601 format. */
   end: string;
+}
+
+/**
+ * Database row shape loaded from `calendar_integrations` for sync work.
+ *
+ * Only the columns needed by the worker are modeled here so the database
+ * contract is explicit at the worker boundary instead of implicit in `any`.
+ */
+interface CalendarIntegrationRow {
+  /** Primary key of the integration row used when updating expiry metadata. */
+  id: string;
+  /** Backend-encrypted Google access token in Base64(AES-GCM) format. */
+  access_token: string;
+  /** Backend-encrypted Google refresh token in Base64(AES-GCM) format. */
+  refresh_token: string;
+  /** Expiration timestamp for the access token currently stored in the database. */
+  expires_at: string;
 }
 
 /**
@@ -58,7 +80,7 @@ export async function handleSyncCalendar(
     throw new Error(`No calendar integration found for user ${userId}`);
   }
 
-  const integration = integrationResult.rows[0];
+  const integration = integrationResult.rows[0] as CalendarIntegrationRow;
 
   // 2. Decrypt tokens
   let accessToken = decryptToken(integration.access_token);
@@ -167,12 +189,16 @@ export async function fetchFreeBusy(
  * Refreshes an expired Google OAuth access token.
  *
  * Uses the stored refresh token to obtain a new access token from Google,
- * then encrypts and updates the database record.
+ * then updates expiry metadata in the shared database record.
+ *
+ * Phase 1 keeps token re-encryption in the Kotlin backend. The agent only needs
+ * a fresh in-memory access token so the current sync can succeed.
  *
  * @param userId The user whose token needs refreshing.
  * @param integrationId The calendar_integrations record ID.
  * @param refreshToken The decrypted refresh token.
  * @returns The new access token (decrypted, ready for API calls).
+ * @throws Error When Google does not return a usable access token.
  */
 async function refreshAccessToken(
   userId: string,

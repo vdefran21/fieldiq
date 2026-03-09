@@ -80,6 +80,35 @@ export interface RefreshTokenRequest {
   refreshToken: string;
 }
 
+/**
+ * Response body for GET /auth/google/authorize-url.
+ * Lets the mobile app open the browser-based Google OAuth flow without needing
+ * to attach its bearer token directly to the browser redirect request.
+ *
+ * Corresponds to Kotlin DTO: GoogleAuthorizeUrlResponse.
+ */
+export interface GoogleAuthorizeUrlResponse {
+  /** Fully qualified Google consent screen URL for the authenticated user. */
+  authorizeUrl: string;
+}
+
+/**
+ * Response body for GET /auth/google/status.
+ * Summarizes the current user's Google Calendar connection state.
+ *
+ * Corresponds to Kotlin DTO: CalendarIntegrationStatusResponse.
+ */
+export interface CalendarIntegrationStatusResponse {
+  /** Whether the user currently has a linked Google Calendar account. */
+  connected: boolean;
+  /** Provider identifier when connected. */
+  provider?: string;
+  /** Timestamp of the last successful availability sync. */
+  lastSyncedAt?: string;
+  /** Access-token expiry time for the linked account. */
+  expiresAt?: string;
+}
+
 // ============================================================================
 // Users
 // ============================================================================
@@ -447,6 +476,19 @@ export interface NegotiationSessionDto {
   createdAt: string;
   /** Proposal history for this session. */
   proposals?: NegotiationProposalDto[];
+}
+
+/**
+ * Response body for POST /negotiations/:sessionId/socket-token.
+ * Provides a short-lived token scoped to one negotiation WebSocket subscription.
+ *
+ * Corresponds to Kotlin DTO: NegotiationSocketTokenResponse.
+ */
+export interface NegotiationSocketTokenResponse {
+  /** Signed token used only for the WebSocket handshake. */
+  token: string;
+  /** Token lifetime in seconds. */
+  expiresInSeconds: number;
 }
 
 /**

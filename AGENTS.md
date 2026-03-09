@@ -176,16 +176,25 @@ The following changes require updating **both** unit tests (`backend/src/test/`)
 
 ---
 
-## Documentation Standards (KDoc)
+## Documentation Standards (Repository-Wide)
 
 > **THIS IS NOT OPTIONAL.** Every code change — new code, refactored code, changed signatures,
-> renamed parameters, modified behavior — MUST include corresponding KDoc updates in the same
-> commit. Stale documentation is worse than no documentation. If you change how something works,
-> update the KDoc to reflect the current state before committing.
+> renamed parameters, modified behavior — MUST include corresponding documentation updates in the
+> same commit. Stale documentation is worse than no documentation. If you change how something
+> works, update the documentation to reflect the current state before committing.
+
+Use the native documentation style for the language, but hold every language to the same bar:
+- **Kotlin:** KDoc
+- **TypeScript / JavaScript:** JSDoc or TSDoc
+- **SQL:** header comments plus inline design notes where needed
+- **YAML / JSON / shell / config files:** concise explanatory comments when the format allows it
+- **Tests:** doc comments and high-value explanatory comments for business context, fixtures, and non-obvious assertions
 
 ### What Must Be Documented
 
-**Every** public and internal class, function, method, and property must have KDoc. No exceptions.
+**Every** public and internal class, function, method, type alias, interface, enum, property, and
+significant module-level constant must be documented. No exceptions. The exact syntax may vary by
+language, but the content standard does not.
 This includes:
 - Unit tests
 - Domain entities (explain what the table represents, relationships, constraints)
@@ -195,6 +204,8 @@ This includes:
 - Configuration classes (explain what they configure and why)
 - Data classes / DTOs (explain what each field means in business terms)
 - Extension functions and utilities
+- TypeScript modules, helper types, worker payloads, and test fixtures
+- Queue message shapes, environment/config objects, and integration-test setup helpers
 
 ### KDoc Format
 
@@ -223,16 +234,37 @@ This includes:
  */
 ```
 
+### TypeScript / JavaScript Documentation Format
+
+```ts
+/**
+ * Brief one-line summary of what this module, function, interface, or constant does.
+ *
+ * Include the same level of rigor expected in KDoc:
+ * - WHY it exists in the product or architecture
+ * - HOW it fits into the larger workflow
+ * - Side effects (DB writes, HTTP calls, SQS messages, file I/O)
+ * - Important invariants, nullability, retry behavior, and failure modes
+ *
+ * @param paramName Business meaning, valid values, and important constraints.
+ * @returns What the caller receives, including empty/null/error semantics.
+ * @throws Error When and why the function throws.
+ * @see RelatedSymbol for nearby contracts or cross-layer dependencies.
+ */
+```
+
 ### Documentation Checklist (Applied to Every Change)
 
-1. **Class-level KDoc**: Purpose, architectural role, key behaviors, configuration needs
-2. **Function-level KDoc**: What it does, all params, return value, thrown exceptions, side effects
-3. **Property-level KDoc**: Business meaning, valid values, constraints, nullability semantics
+1. **Type/class/module docs**: Purpose, architectural role, key behaviors, configuration needs
+2. **Function/method docs**: What it does, all params, return value, thrown exceptions, side effects
+3. **Property/field docs**: Business meaning, valid values, constraints, nullability semantics
 4. **Edge cases**: Document null handling, empty collections, boundary conditions
 5. **Cross-references**: Use `@see` to link related classes (e.g., entity ↔ repository ↔ service)
 6. **Concurrency**: Note if a method is suspend, blocking, or has thread-safety requirements
 7. **Database impact**: Note if a method reads, writes, or modifies DB state
 8. **SQS/async**: Note if a method enqueues messages or triggers async side effects
+9. **External APIs**: Note outbound network calls, auth requirements, rate limits, and retry expectations
+10. **Tests and fixtures**: Explain why the fixture exists, what contract it protects, and what failure would mean
 
 ### Anti-Patterns to Avoid
 
@@ -240,13 +272,17 @@ This includes:
 - **Implementation details as docs**: Don't describe *how* the code works line-by-line. Describe *what* it achieves and *why*.
 - **Missing exception docs**: If a function throws, document it. Callers need to know.
 - **Stale docs**: The #1 violation. If you change a function's behavior, **update the KDoc in the same commit**. Period.
+- **Undocumented TS helpers**: Internal TypeScript helpers are not exempt just because they are not exported.
+- **Comment-free tests**: If a test protects a business rule or integration contract, document that rule.
 
-### TypeScript Documentation (Shared Types)
+### TypeScript Documentation
 
-The `shared/types/index.ts` file uses JSDoc-style comments following the same principles:
+All TypeScript across the monorepo follows the same standard:
 - Every interface and its fields must have doc comments
+- Every exported function and every non-trivial internal helper must have doc comments
 - Explain business meaning, not just type information
-- Note which Kotlin DTO each interface corresponds to
+- Note which backend DTO, queue contract, or workflow the type corresponds to
+- Add concise inline comments only where the control flow or data transformation would otherwise be hard to follow
 
 ### SQL Migration Documentation
 
@@ -254,4 +290,3 @@ Each migration file must include:
 - A header comment explaining what the migration does and why
 - Inline comments for non-obvious constraints, indexes, or design decisions
 - Reference to the relevant design doc (e.g., `-- See docs/01_Phase1_Schema.md`)
-

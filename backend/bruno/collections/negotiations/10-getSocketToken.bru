@@ -1,0 +1,42 @@
+meta {
+  name: 10-getSocketToken
+  type: http
+  seq: 10
+}
+
+docs {
+  Exchanges the authenticated manager session for a short-lived negotiation WebSocket token.
+}
+
+script:pre-request {
+  const { loginAs } = require('./scripts/test-helpers.js');
+  try {
+    await loginAs('manager-a');
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/negotiations/{{sessionId}}/socket-token
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.token: isString
+  res.body.expiresInSeconds: isNumber
+}
+
+tests {
+  const { expect } = require('chai');
+  test('socket token payload is present', () => {
+    expect(res.body.token).to.have.length.greaterThan(20);
+    expect(res.body.expiresInSeconds).to.be.greaterThan(0);
+  });
+}

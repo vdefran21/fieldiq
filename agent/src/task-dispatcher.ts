@@ -14,6 +14,19 @@ import {
 } from './workers/notification.worker';
 
 /**
+ * Parsed task body understood by the dispatcher.
+ *
+ * The backend owns the queue contract and always includes a `taskType`
+ * discriminator. Additional properties vary by worker.
+ */
+interface DispatchableTaskBody {
+  /** Backend-owned task discriminator used for worker routing. */
+  taskType: string;
+  /** Task-specific payload fields forwarded to the selected worker. */
+  [key: string]: unknown;
+}
+
+/**
  * Result of processing a single SQS message.
  *
  * Returned by {@link processMessage} so callers can inspect outcomes
@@ -27,7 +40,9 @@ export interface ProcessMessageResult {
   status: 'processed' | 'failed';
   /** Whether the message was deleted from SQS (true for success AND malformed JSON) */
   deleted: boolean;
+  /** Task type parsed from the payload when JSON parsing succeeded. */
   taskType?: string;
+  /** Human-readable failure reason for logs and test assertions. */
   error?: string;
 }
 
@@ -65,7 +80,7 @@ export interface PollResult {
  * @param body The parsed message body containing `taskType` and task-specific fields.
  */
 export async function dispatchTask(
-  body: { taskType: string; [key: string]: unknown },
+  body: DispatchableTaskBody,
 ): Promise<void> {
   switch (body.taskType) {
     case 'SYNC_CALENDAR':
@@ -109,7 +124,7 @@ export async function processMessage(
     return { status: 'failed', deleted: false, error: 'Message missing Body or ReceiptHandle' };
   }
 
-  let body: { taskType: string; [key: string]: unknown };
+  let body: DispatchableTaskBody;
   try {
     body = JSON.parse(message.Body);
   } catch {

@@ -33,6 +33,16 @@ spring:
 server:
   port: 8080
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
 fieldiq:
   instance:
     id: ${FIELDIQ_INSTANCE_ID:local-dev}
@@ -53,5 +63,11 @@ fieldiq:
     client-id: ${GOOGLE_CLIENT_ID:}
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/auth/google/callback}
+  websocket:
+    allowed-origin-patterns:
+      - ${FIELDIQ_WS_ALLOWED_ORIGIN_1:http://localhost:8080}
+      - ${FIELDIQ_WS_ALLOWED_ORIGIN_2:http://localhost:8081}
+      - ${FIELDIQ_WS_ALLOWED_ORIGIN_3:http://localhost:19006}
+      - ${FIELDIQ_WS_ALLOWED_ORIGIN_4:exp://*}
   encryption:
     token-key: ${TOKEN_ENCRYPTION_KEY:dev-token-encryption-key-change-in-production!32}

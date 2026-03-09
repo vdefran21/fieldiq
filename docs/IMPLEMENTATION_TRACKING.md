@@ -2,7 +2,7 @@
 
 **Target:** Working cross-team scheduling negotiation demo + iOS MVP
 **Timeline:** 16 weeks (8 sprints)
-**Last updated:** 2026-03-08 (session 31 — mobile team onboarding, push-config guard, and negotiation approval states)
+**Last updated:** 2026-03-09 (session 37 — negotiation confirmation progress UI and polling fallback)
 
 **Legend:** ✅ Complete | 🔧 In Progress | ⬜ Not Started
 
@@ -60,7 +60,7 @@
 | ✅ | 02 | `POST /auth/request-otp` — send OTP via SMS/email | `AuthController.kt`, `AuthService.requestOtp()` |
 | ✅ | 02 | `POST /auth/verify-otp` — verify hashed OTP, issue JWT + refresh token | `AuthController.kt`, `AuthService.verifyOtp()` |
 | ✅ | 02 | `POST /auth/refresh` — rotate refresh token, issue new JWT | `AuthController.kt`, `AuthService.refreshToken()` |
-| ✅ | 02 | `POST /auth/logout` — revoke refresh token | `AuthController.kt`, `AuthService.logout()` |
+| ✅ | 02 | `POST /auth/logout` — revoke refresh token | `AuthController.kt`, `AuthService.logout()`, `SecurityConfig.kt`, `JwtAuthenticationFilter.kt` — logout remains a public refresh-token revocation endpoint per `docs/02_Phase1_Auth_Calendar.md`. Session 33 fixed a security-config regression that had incorrectly started requiring JWT and caused Bruno `collections/_auth/04-logout` to return 401 instead of 204. Verification: `cd backend && ./gradlew test` passed. |
 | ✅ | 02 | JWT generation service (15min access, refresh rotation) | `JwtService.kt` — HS256, configurable expiry |
 | ✅ | 03 | JWT authentication filter (validate on every request) | `JwtAuthenticationFilter.kt` — `OncePerRequestFilter` |
 | ✅ | 02 | OTP rate limiting — Redis-backed (3/15min, 10/24h per identifier) | `OtpRateLimitService.kt`, `RedisConfig.kt` |
@@ -247,13 +247,14 @@
 | ✅ | 06 | Expo Router file-based routing (`(auth)/`, `(app)/`) | `mobile/app/_layout.tsx`, `mobile/app/index.tsx`, `mobile/app/(auth)/login.tsx`, `mobile/app/(app)/_layout.tsx`. Session 31: added hidden authenticated route `mobile/app/(app)/create-team.tsx` for first-team onboarding from empty states. |
 | ✅ | 06 | Login screen + OTP verification flow | `mobile/app/(auth)/login.tsx`, `mobile/services/api.ts` — requests OTP and verifies via live API client. Session 30: added submit-time US phone normalization (`4107010177` -> `+14107010177`) so users do not need to type `+1`, and fixed the mobile fetch helper to treat empty `200 OK` OTP responses as success instead of throwing `JSON Parse error: Unexpected end of input`. |
 | ✅ | 06 | SecureStore token management (JWT + refresh) | `mobile/services/session.ts`, `mobile/services/api.ts` |
-| ✅ | 06 | Schedule feed — events list (`(app)/index.tsx`) | `mobile/app/(app)/index.tsx`, `mobile/hooks/usePrimaryTeam.ts` — loads the first accessible team, normalizes loading/error/empty states, and offers a create-team CTA when the manager has no teams yet. |
+| ✅ | 06 | Schedule feed — events list (`(app)/index.tsx`) | `mobile/app/(app)/index.tsx`, `mobile/hooks/usePrimaryTeam.ts` — loads the first accessible team, normalizes loading/error/empty states, offers a create-team CTA when the manager has no teams yet, and now exposes quick actions for `Start negotiation`, `Create event`, and `Join negotiation`. Session 32 verification: `cd mobile && npm run lint`, `cd mobile && npx tsc --noEmit` passed. |
 | ✅ | 06 | Team/roster screen (`(app)/team.tsx`) | `mobile/app/(app)/team.tsx`, `mobile/hooks/usePrimaryTeam.ts` — roster now mirrors schedule state handling with loading/error/empty states and the same first-team onboarding CTA. |
-| 🔧 | 06 | Settings screen + Google Calendar connect (`(app)/settings.tsx`) | `mobile/app/(app)/settings.tsx`, `mobile/services/notifications.ts`, `mobile/app.json` — profile refresh/retry added, device registration now reports readable push states, and missing Expo project IDs no longer crash local development. Calendar connect remains placeholder copy only. |
-| ✅ | 06 | API client (`services/api.ts`) with auth interceptor | `mobile/services/api.ts` — bearer auth, refresh retry, teams/events/negotiation/device methods |
+| ✅ | 06 | Settings screen + Google Calendar connect (`(app)/settings.tsx`) | `mobile/app/(app)/settings.tsx`, `mobile/services/api.ts`, `backend/src/main/kotlin/com/fieldiq/api/GoogleCalendarController.kt` — settings now loads real calendar connection status, opens the browser-safe `GET /auth/google/authorize-url` handoff, supports disconnect, and keeps push registration readable/non-fatal in local development. Session 32 verification: `cd mobile && npm run lint`, `cd mobile && npx tsc --noEmit`, `cd backend && ./gradlew test` passed. |
+| ✅ | 06 | API client (`services/api.ts`) with auth interceptor | `mobile/services/api.ts` — bearer auth, refresh retry, team/event creation, negotiation initiate/join/propose/respond/socket-token methods, and calendar status/connect/disconnect helpers. Session 32 verification: `cd mobile && npm run lint`, `cd mobile && npx tsc --noEmit` passed. Session 35 added dev-only request diagnostics that log the resolved `API_BASE`, request method/URL, HTTP status, and fetch transport failures without exposing tokens or request bodies. Verification: `cd mobile && npm run lint`, `cd mobile && npx tsc --noEmit` passed. |
 | ✅ | 06 | Push token registration on app launch | `mobile/app/(app)/_layout.tsx`, `mobile/services/notifications.ts`, `mobile/app.json` — launch-time registration now skips cleanly when Expo push metadata is not configured and only registers with the backend when a real Expo token is available. |
 | ✅ | 06 | First-team onboarding / create-team flow | `mobile/app/(app)/create-team.tsx`, `mobile/hooks/usePrimaryTeam.ts`, `mobile/app/(app)/index.tsx`, `mobile/app/(app)/team.tsx`, `docs/06_Phase1_Mobile.md`, `mobile/README.md` — managers can now create a first team directly from mobile empty states instead of requiring backend pre-seeding. Verification: `cd mobile && npm run lint` and `cd mobile && npx tsc --noEmit` both passed in session 31. |
-| ⬜ | 06 | "Finding mutual time..." animated component (Lottie/Animated) | |
+| ✅ | 06 | Schedule-entry flows for create event / start negotiation / join negotiation | `mobile/app/(app)/create-event.tsx`, `mobile/app/(app)/start-negotiation.tsx`, `mobile/app/(app)/join-negotiation.tsx`, `mobile/app/(app)/_layout.tsx` — the mobile app can now create an event, initiate a negotiation, or join a shared negotiation without backend pre-seeding or hidden route knowledge. Session 32 verification: `cd mobile && npm run lint`, `cd mobile && npx tsc --noEmit` passed. Session 36 added paste-to-fill parsing for shared negotiation invite text so the responder can auto-populate initiator URL, session ID, and invite token from one pasted payload. |
+| ✅ | 06 | "Finding mutual time..." animated component (Lottie/Animated) | `mobile/app/(app)/negotiate/[id].tsx` — added an Expo `Animated` pulse treatment for the proposing state so the screen no longer stalls as plain text while proposal rounds are active. |
 
 ---
 
@@ -261,9 +262,9 @@
 
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
-| 🔧 | 06 | Negotiation approval screen (`(app)/negotiate.tsx`) — the key UX moment | `mobile/app/(app)/negotiate/[id].tsx` — renders proposing, pending-approval, confirmed, failed, and cancelled states; supports live refresh via WebSocket, manager confirmation of the agreed slot, cancellation, and `.ics` calendar CTA lookup for confirmed events. Still missing richer proposal/counter UX and animated "Finding mutual time..." treatment. |
-| ✅ | 03 | WebSocket client for real-time negotiation updates | Backend: `backend/src/main/kotlin/com/fieldiq/websocket/` — raw WebSocket endpoint + handshake auth + realtime publisher. Mobile: `mobile/services/negotiation-websocket.ts`. |
-| 🔧 | 05 | Push notifications via Expo (FCM for iOS) | `mobile/services/notifications.ts`, `mobile/app.json`, `mobile/app/(app)/settings.tsx` now treat missing Expo `projectId` as a non-fatal local-dev state and surface readable device-registration messaging. Backend registration exists (`UserController.kt`, `UserDeviceService.kt`), but worker transport still logs delivery attempts instead of calling Expo's push API. |
+| ✅ | 06 | Negotiation approval screen (`(app)/negotiate.tsx`) — the key UX moment | `mobile/app/(app)/negotiate/[id].tsx` — now renders invite-sharing, proposing, pending-approval, confirmed, failed, and cancelled states; supports live refresh via WebSocket, proposal-round generation, counter-suggestions from both proposing and pending-approval states, confirmation, cancellation, and `.ics` lookup for confirmed games. Session 32 verification: `cd mobile && npm run lint`, `cd mobile && npx tsc --noEmit` passed. Session 36 added a shareable invite payload on the pending-response screen so managers can send a single join blob instead of manually transcribing UUIDs. Session 37 added explicit confirmation-progress UI plus a 5-second polling fallback for active sessions so remote confirmations are visible even if the WebSocket misses an update. Verification: `cd mobile && npm run lint`, `cd mobile && npx tsc --noEmit` passed. |
+| ✅ | 03 | WebSocket client for real-time negotiation updates | Backend: `backend/src/main/kotlin/com/fieldiq/websocket/` — origin-aware negotiation handshake, short-lived negotiation-scoped socket tokens, and realtime publisher. Mobile: `mobile/services/negotiation-websocket.ts` now exchanges a REST-authenticated socket token before opening the websocket. Backend verification: `cd backend && ./gradlew test` passed with new `JwtServiceTest` coverage. |
+| 🔧 | 05 | Push notifications via Expo (FCM for iOS) | `agent/src/workers/notification.worker.ts`, `agent/src/index.ts`, `agent/src/sqs-client.ts`, `agent/src/config.ts`, `agent/src/__tests__/notification.worker.test.ts` — agent now polls the notifications queue and calls Expo's push API instead of logging-only delivery attempts. Verification: `cd agent && npm test`, `cd agent && npm run build` passed. Physical-device delivery validation is still pending. |
 | ✅ | 05 | `notification.worker.ts` — SQS consumer for `SEND_NOTIFICATION` | `agent/src/workers/notification.worker.ts`, `agent/src/__tests__/notification.worker.test.ts`, `agent/src/task-dispatcher.ts` |
 | ⬜ | 05 | `CommunicationAgent` (Claude Haiku) for reminder + outcome message drafting | |
 | ⬜ | 06 | RSVP tracking UI on event detail screen | |
@@ -287,6 +288,9 @@
 
 | Status | Doc | Task | Evidence / Notes |
 |--------|-----|------|------------------|
+| ✅ | 00 | Repository-wide documentation baseline (KDoc/JSDoc parity) | `AGENTS.md`, `CLAUDE.md`, `agent/src/config.ts`, `agent/src/db.ts`, `agent/src/encryption.ts`, `agent/src/index.ts`, `agent/src/sqs-client.ts`, `agent/src/task-dispatcher.ts`, `agent/src/workers/calendar-sync.worker.ts`, `agent/src/workers/notification.worker.ts`, `agent/src/__tests__/`, `agent/src/__integration__/setup/` — instruction files now require KDoc-level documentation rigor across all languages, and the agent runtime plus test/support files received a JSDoc documentation pass. Verification: `cd agent && npm test`, `cd agent && npm run build` passed. |
+| 🔧 | 07,09 | DevSecOps guardrails (Dependabot, dependency review, CodeQL, threat model) | `.github/dependabot.yml`, `.github/workflows/dependency-review.yml`, `.github/workflows/codeql.yml`, `docs/10_Threat_Model.md`, `docs/07_Phase1_CI_Testing.md` — added repo-managed dependency review, weekly dependency updates, CodeQL scanning, and a Phase 1 threat model. Verification: config files added; runtime validation not applicable locally. |
+| 🔧 | 03,09 | Observability baseline (Actuator health/metrics + correlation IDs) | `backend/src/main/resources/application.yml`, `backend/src/main/kotlin/com/fieldiq/config/CorrelationIdFilter.kt`, `backend/src/main/kotlin/com/fieldiq/service/NotificationQueuePublisher.kt`, `backend/src/main/kotlin/com/fieldiq/service/AgentTaskQueuePublisher.kt` — actuator health/metrics exposure and `X-Request-Id` correlation IDs are now present, with queue-publish logs including structured identifiers. Verification: `cd backend && ./gradlew test` passed. |
 | ⬜ | 00 | Invite 5 real DMV soccer managers for beta | |
 | ⬜ | 00 | Instrument time-saved metric (initiate → confirmed) | |
 | ⬜ | 00 | Fix friction points from real usage | |
@@ -304,8 +308,8 @@
 | 2 | Core CRUD + Auth | ✅ Complete | 24/24 | 24 |
 | 3 | Scheduling + Calendar Sync | ✅ Complete | 18/18 | 18 |
 | 4 | Negotiation Protocol v1 | ✅ Complete | 42/42 | 42 |
-| 5 | React Native App | 🔧 In Progress | 9/11 | 11 |
-| 6 | Negotiation UX + Notifications | 🔧 In Progress | 3/7 | 7 |
+| 5 | React Native App | ✅ Complete | 12/12 | 12 |
+| 6 | Negotiation UX + Notifications | 🔧 In Progress | 4/7 | 7 |
 | 7 | End-to-End Integration | ⬜ Not Started | 0/5 | 5 |
-| 8 | Real Users + Instrumentation | ⬜ Not Started | 0/6 | 6 |
-| **Total** | | | **120/137** | **137** |
+| 8 | Real Users + Instrumentation | 🔧 In Progress | 1/9 | 9 |
+| **Total** | | | **125/141** | **141** |

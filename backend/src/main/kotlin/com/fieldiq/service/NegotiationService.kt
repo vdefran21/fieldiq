@@ -7,6 +7,7 @@ import com.fieldiq.api.dto.IncomingNegotiationRequest
 import com.fieldiq.api.dto.InitiateNegotiationRequest
 import com.fieldiq.api.dto.JoinSessionRequest
 import com.fieldiq.api.dto.NegotiationProposalDto
+import com.fieldiq.api.dto.NegotiationSocketTokenResponse
 import com.fieldiq.api.dto.NegotiationSessionDto
 import com.fieldiq.api.dto.RelayRequest
 import com.fieldiq.api.dto.RelayResponse
@@ -24,6 +25,7 @@ import com.fieldiq.repository.NegotiationProposalRepository
 import com.fieldiq.repository.NegotiationSessionRepository
 import com.fieldiq.security.HmacAuthenticationFilter
 import com.fieldiq.security.HmacService
+import com.fieldiq.security.JwtService
 import com.fieldiq.websocket.NegotiationRealtimePublisher
 import jakarta.persistence.EntityNotFoundException
 import org.slf4j.LoggerFactory
@@ -72,6 +74,7 @@ import java.util.UUID
  * @property relayClient HTTP client for cross-instance relay calls with HMAC signatures.
  * @property teamAccessGuard Multi-tenancy enforcement — ensures callers are team managers.
  * @property hmacService HMAC key derivation and signature computation.
+ * @property jwtService Token service used to mint short-lived negotiation WebSocket tokens.
  * @property properties Application configuration (instance ID, base URL, secrets).
  * @property redisTemplate Redis client for caching derived session keys.
  * @property objectMapper Jackson mapper for JSONB slot serialization/deserialization.
@@ -89,6 +92,7 @@ class NegotiationService(
     private val relayClient: CrossInstanceRelayClient,
     private val teamAccessGuard: TeamAccessGuard,
     private val hmacService: HmacService,
+    private val jwtService: JwtService,
     private val properties: FieldIQProperties,
     private val redisTemplate: StringRedisTemplate,
     private val objectMapper: ObjectMapper,
@@ -192,6 +196,28 @@ class NegotiationService(
         val proposalDtos = proposals.map { toProposalDto(it) }
 
         return NegotiationSessionDto.from(session, proposalDtos)
+    }
+
+    /**
+     * Creates a short-lived token for the negotiation WebSocket handshake.
+     *
+     * The caller must already have normal REST access to the session. The returned token
+     * is narrower than the standard bearer token because it is scoped to a single session
+     * and expires quickly.
+     *
+     * @param sessionId UUID of the negotiation session.
+     * @param userId UUID of the authenticated user requesting realtime updates.
+     * @return Token payload used by the mobile app for `/ws/negotiations/{id}`.
+     */
+    @Transactional(readOnly = true)
+    fun createSocketToken(sessionId: UUID, userId: UUID): NegotiationSocketTokenResponse {
+        val session = findSessionOrThrow(sessionId)
+        requireSessionAccess(session, userId)
+
+        return NegotiationSocketTokenResponse(
+            token = jwtService.generateNegotiationSocketToken(userId, sessionId),
+            expiresInSeconds = jwtService.negotiationSocketExpirationSeconds(),
+        )
     }
 
     /**
@@ -1047,7 +1073,9 @@ class NegotiationService(
      * Responds to the most recent proposal — accept, reject, or counter.
      *
      * Updates the latest proposal's response status and optionally triggers
-     * a counter-proposal if the response is "countered".
+     * a counter-proposal if the response is "countered". When a session is already in
+     * `pending_approval`, a counter-response clears the agreed slot and moves the session
+     * back to `proposing`.
      *
      * @param sessionId UUID of the negotiation session.
      * @param userId UUID of the authenticated user.
@@ -1061,7 +1089,8 @@ class NegotiationService(
         request: RespondToProposalRequest,
     ): NegotiationSessionDto {
         val session = findSessionOrThrow(sessionId)
-        require(session.status == "proposing") {
+        val canCounterFromPendingApproval = session.status == "pending_approval" && request.responseStatus == "countered"
+        require(session.status == "proposing" || canCounterFromPendingApproval) {
             "Cannot respond to proposals in status '${session.status}'"
         }
 
@@ -1095,7 +1124,23 @@ class NegotiationService(
                     slots = counterSlotsJson,
                 ),
             )
-            sessionRepo.save(session.copy(currentRound = counterRound, updatedAt = Instant.now()))
+            val nextStatus = if (canCounterFromPendingApproval) "proposing" else session.status
+            val updatedSession = sessionRepo.save(
+                session.copy(
+                    status = nextStatus,
+                    currentRound = counterRound,
+                    agreedStartsAt = if (canCounterFromPendingApproval) null else session.agreedStartsAt,
+                    agreedEndsAt = if (canCounterFromPendingApproval) null else session.agreedEndsAt,
+                    agreedLocation = if (canCounterFromPendingApproval) null else session.agreedLocation,
+                    initiatorConfirmed = if (canCounterFromPendingApproval) false else session.initiatorConfirmed,
+                    responderConfirmed = if (canCounterFromPendingApproval) false else session.responderConfirmed,
+                    updatedAt = Instant.now(),
+                ),
+            )
+            if (canCounterFromPendingApproval) {
+                logEvent(sessionId, "approval_countered", actor)
+                publishSessionUpdate(updatedSession, "approval_countered")
+            }
         }
 
         logEvent(sessionId, "response_sent", actor, """{"status":"${request.responseStatus}"}""")

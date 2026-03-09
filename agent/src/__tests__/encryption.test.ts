@@ -22,7 +22,9 @@ jest.mock('../config', () => ({
 describe('encryption', () => {
   /**
    * Helper: encrypt a string using the same AES-256-GCM format as the backend.
-   * This simulates what TokenEncryptionConverter.encrypt() produces.
+   *
+   * This simulates what `TokenEncryptionConverter.encrypt()` produces so the
+   * tests validate true cross-language compatibility rather than a toy format.
    */
   function encryptLikeBackend(plaintext: string, keyString: string): string {
     const keyBytes = Buffer.from(keyString, 'utf8').subarray(0, 32);

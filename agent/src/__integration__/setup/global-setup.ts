@@ -13,6 +13,9 @@ import { createSqsClient, getAgentTasksQueueUrl } from '../../sqs-client';
  * **Prerequisites:**
  * - `docker compose up -d` (Postgres on :5432, LocalStack on :4566)
  * - Backend booted at least once to run Flyway migrations
+ *
+ * This setup intentionally fails fast before any tests run so developers get a
+ * single actionable infrastructure error instead of a cascade of opaque failures.
  */
 export default async function globalSetup(): Promise<void> {
   // 1. Verify Postgres is reachable and Flyway schema exists

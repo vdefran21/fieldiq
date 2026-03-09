@@ -65,6 +65,22 @@ export default function ScheduleScreen() {
         ) : null}
       </Card>
 
+      {team ? (
+        <Card>
+          <Text style={styles.sectionTitle}>Quick actions</Text>
+          <Text style={styles.muted}>Start real scheduling work from the mobile app instead of waiting on pre-seeded data.</Text>
+          <Pressable style={styles.primaryButton} onPress={() => router.push('./start-negotiation')}>
+            <Text style={styles.primaryButtonText}>Start negotiation</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryButton} onPress={() => router.push('./create-event')}>
+            <Text style={styles.secondaryButtonText}>Create event</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryButton} onPress={() => router.push('./join-negotiation')}>
+            <Text style={styles.secondaryButtonText}>Join negotiation</Text>
+          </Pressable>
+        </Card>
+      ) : null}
+
       {team && eventsLoading ? (
         <Card>
           <ActivityIndicator color="#d95d39" />
@@ -85,7 +101,7 @@ export default function ScheduleScreen() {
       {team && !eventsLoading && !eventsError && events.length === 0 ? (
         <Card>
           <Text style={styles.sectionTitle}>No events scheduled yet</Text>
-          <Text style={styles.muted}>Once you add practices or negotiate a game, upcoming events will appear here.</Text>
+          <Text style={styles.muted}>Create an event, start a negotiation, or join an invite to put real schedule work in motion.</Text>
         </Card>
       ) : null}
 

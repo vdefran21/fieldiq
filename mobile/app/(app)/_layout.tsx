@@ -33,6 +33,9 @@ export default function AppLayout() {
       <Tabs.Screen name="team" options={{ title: 'Team' }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
       <Tabs.Screen name="create-team" options={{ href: null }} />
+      <Tabs.Screen name="create-event" options={{ href: null }} />
+      <Tabs.Screen name="start-negotiation" options={{ href: null }} />
+      <Tabs.Screen name="join-negotiation" options={{ href: null }} />
       <Tabs.Screen name="negotiate/[id]" options={{ href: null }} />
     </Tabs>
   );

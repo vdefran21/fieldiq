@@ -50,12 +50,12 @@ same channel.
 ```
 OAuth Flow:
 1. User taps "Connect Google Calendar" in Settings
-2. App opens: GET /auth/google/authorize -> redirects to Google OAuth
+2. App calls: GET /auth/google/authorize-url and opens the returned Google consent URL in the browser
 3. User grants permission
 4. Google redirects to: /auth/google/callback?code=...
 5. Backend exchanges code for access_token + refresh_token
 6. Tokens stored encrypted in calendar_integrations table
-7. Backend enqueues SYNC_CALENDAR task to SQS immediately
+7. Backend enqueues one SYNC_CALENDAR task per active team membership immediately
 8. Agent worker processes: calls Google FreeBusy API, stores busy blocks
 9. Subsequent syncs run every 4 hours via scheduled SQS message
 

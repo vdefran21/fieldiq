@@ -98,6 +98,8 @@ data class TimeSlotRequest(
  * Request body for `POST /negotiations/:sessionId/respond`.
  *
  * Responds to the other team's most recent proposal — accept, reject, or counter.
+ * Countering is also used when a manager wants to suggest a different time after a
+ * pending-approval match, which moves the session back into proposal exchange.
  *
  * Corresponds to TypeScript: `RespondToProposalRequest` in `shared/types/index.ts`.
  *
@@ -176,6 +178,22 @@ data class IncomingNegotiationRequest(
 // ============================================================================
 // Response DTOs
 // ============================================================================
+
+/**
+ * Short-lived token used for a single negotiation WebSocket subscription.
+ *
+ * The mobile app exchanges its bearer-authenticated REST session for this narrower
+ * token before opening the WebSocket. The token is scoped to one negotiation and
+ * expires quickly, reducing the blast radius versus reusing the long-lived access JWT
+ * in the handshake URL.
+ *
+ * @property token Signed token accepted only by the negotiation WebSocket handshake.
+ * @property expiresInSeconds Token lifetime in seconds for client refresh decisions.
+ */
+data class NegotiationSocketTokenResponse(
+    val token: String,
+    val expiresInSeconds: Long,
+)
 
 /**
  * Negotiation session data returned in API responses.

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Linking, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import type { EventDto, NegotiationProposalDto, NegotiationSessionDto } from '../../../../shared/types';
 import { Card } from '../../../components/Card';
@@ -11,8 +11,8 @@ import { useNegotiationSocket } from '../../../services/negotiation-websocket';
 /**
  * Negotiation review screen with live WebSocket updates and approval actions.
  *
- * This screen now renders the primary Sprint 6 states directly in the mobile shell:
- * active proposing, pending approval, confirmed, and terminal failure/cancellation.
+ * This screen exposes the core manager loop for Phase 1: invite sharing, proposal
+ * generation, counter-suggestions, confirmation, and `.ics` download after scheduling.
  */
 export default function NegotiationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,8 +22,25 @@ export default function NegotiationScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmedEvent, setConfirmedEvent] = useState<EventDto | null>(null);
   const [sessionReloadKey, setSessionReloadKey] = useState(0);
+  const [showCounterForm, setShowCounterForm] = useState(false);
+  const [counterStartsAt, setCounterStartsAt] = useState('');
+  const [counterEndsAt, setCounterEndsAt] = useState('');
+  const [counterLocation, setCounterLocation] = useState('');
   const socketMessage = useNegotiationSocket(id);
   const { teams } = usePrimaryTeam();
+  const pulse = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.85, duration: 900, useNativeDriver: true }),
+      ]),
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
 
   useEffect(() => {
     async function loadSession() {
@@ -53,6 +70,18 @@ export default function NegotiationScreen() {
 
     setSessionReloadKey((value) => value + 1);
   }, [id, socketMessage]);
+
+  useEffect(() => {
+    if (!id || !session || ['confirmed', 'failed', 'cancelled'].includes(session.status)) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setSessionReloadKey((value) => value + 1);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [id, session]);
 
   useEffect(() => {
     if (!id || !session || session.status !== 'confirmed') {
@@ -90,13 +119,25 @@ export default function NegotiationScreen() {
   }, [session?.status, socketMessage]);
 
   const currentTeamId = teams.find((team) => team.id === session?.initiatorTeamId || team.id === session?.responderTeamId)?.id;
+  const currentActor =
+    currentTeamId === session?.initiatorTeamId ? 'initiator' : currentTeamId === session?.responderTeamId ? 'responder' : null;
   const hasCurrentManagerConfirmed =
     currentTeamId === session?.initiatorTeamId
       ? session?.initiatorConfirmed
       : currentTeamId === session?.responderTeamId
         ? session?.responderConfirmed
         : false;
+  const hasCounterpartManagerConfirmed =
+    currentTeamId === session?.initiatorTeamId
+      ? session?.responderConfirmed
+      : currentTeamId === session?.responderTeamId
+        ? session?.initiatorConfirmed
+        : false;
   const latestProposal: NegotiationProposalDto | null = session?.proposals?.[session.proposals.length - 1] ?? null;
+  const latestCounterpartProposal =
+    session?.proposals
+      ?.filter((proposal) => proposal.proposedBy !== currentActor)
+      .sort((left, right) => right.roundNumber - left.roundNumber)?.[0] ?? null;
   const agreedSlot =
     session?.agreedStartsAt && session?.agreedEndsAt
       ? {
@@ -106,13 +147,68 @@ export default function NegotiationScreen() {
         }
       : null;
   const calendarUrl = confirmedEvent?.icsUrl ? `${API_BASE}${confirmedEvent.icsUrl}` : null;
+  const inviteShareText = session?.inviteToken
+    ? buildInviteShareText(API_BASE, session.id, session.inviteToken)
+    : null;
 
   if (!id) {
     return <Screen title="Negotiation" subtitle="Missing session identifier." />;
   }
 
+  function refreshSession() {
+    setSessionReloadKey((value) => value + 1);
+  }
+
+  async function submitCounterProposal() {
+    if (!counterStartsAt.trim() || !counterEndsAt.trim()) {
+      setSessionError('Counter proposals need both a start and end time.');
+      return;
+    }
+
+    setSubmitting(true);
+    setSessionError(null);
+
+    try {
+      const updated = await api.negotiations.respond(id, {
+        responseStatus: 'countered',
+        counterSlots: [
+          {
+            startsAt: counterStartsAt.trim(),
+            endsAt: counterEndsAt.trim(),
+            location: counterLocation.trim() || undefined,
+          },
+        ],
+      });
+      setSession(updated);
+      setShowCounterForm(false);
+      setCounterStartsAt('');
+      setCounterEndsAt('');
+      setCounterLocation('');
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : 'Unable to send the counter proposal.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function shareInviteDetails() {
+    if (!inviteShareText) {
+      setSessionError('Invite details are unavailable until the session is ready to share.');
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: inviteShareText,
+        title: 'FieldIQ negotiation invite',
+      });
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : 'Unable to share the invite details.');
+    }
+  }
+
   return (
-    <Screen title="Negotiation" subtitle="FieldIQ keeps the session live over WebSocket while managers confirm or cancel the negotiated result.">
+    <Screen title="Negotiation" subtitle="FieldIQ keeps the session live while managers share, join, propose, counter, and confirm the result.">
       <Card>
         <Text style={styles.heading}>Session {id}</Text>
         <Text style={styles.status}>{statusLine}</Text>
@@ -130,32 +226,94 @@ export default function NegotiationScreen() {
         <Card>
           <Text style={styles.heading}>Negotiation unavailable</Text>
           <Text style={styles.error}>{sessionError}</Text>
-          <Pressable style={styles.secondaryButton} onPress={() => setSessionReloadKey((value) => value + 1)}>
+          <Pressable style={styles.secondaryButton} onPress={() => void refreshSession()}>
             <Text style={styles.secondaryButtonText}>Retry</Text>
           </Pressable>
         </Card>
       ) : null}
 
-      {session?.status === 'proposing' || session?.status === 'pending_response' ? (
+      {session?.status === 'pending_response' ? (
+        <>
+          <Card>
+            <Text style={styles.heading}>Share invite details</Text>
+            <Text style={styles.meta}>The other manager needs the initiating instance, session ID, and invite token to join.</Text>
+            <Text style={styles.detailLabel}>Initiator instance</Text>
+            <Text style={styles.detailValue}>{API_BASE}</Text>
+            <Text style={styles.detailLabel}>Session ID</Text>
+            <Text style={styles.detailValue}>{session.id}</Text>
+            <Text style={styles.detailLabel}>Invite token</Text>
+            <Text style={styles.inviteToken}>{session.inviteToken ?? 'Invite token unavailable after join.'}</Text>
+            <Pressable style={styles.primaryButton} onPress={() => void shareInviteDetails()} disabled={!inviteShareText}>
+              <Text style={styles.primaryText}>Share invite details</Text>
+            </Pressable>
+            {inviteShareText ? <Text selectable style={styles.sharePayload}>{inviteShareText}</Text> : null}
+          </Card>
+
+          <Card>
+            <Text style={styles.heading}>Waiting for join</Text>
+            <Text style={styles.meta}>After the other manager joins from their instance, return here and start a proposal round.</Text>
+          </Card>
+        </>
+      ) : null}
+
+      {session?.status === 'proposing' ? (
         <>
           <Card>
             <Text style={styles.heading}>Finding mutual time</Text>
-            <Text style={styles.meta}>
-              {session.status === 'pending_response'
-                ? 'Waiting for the opposing manager to join this negotiation.'
-                : 'FieldIQ is comparing availability and exchanging proposals.'}
-            </Text>
+            <Animated.View style={[styles.findingPulse, { transform: [{ scale: pulse }] }]} />
+            <Text style={styles.meta}>FieldIQ is comparing availability and exchanging proposal rounds.</Text>
             <Text style={styles.meta}>
               {latestProposal
                 ? `Latest proposal: ${formatSlot(latestProposal.slots[0]?.startsAt, latestProposal.slots[0]?.endsAt)}`
                 : 'No slot proposal has been recorded yet.'}
             </Text>
+            <Text style={styles.meta}>Last event: {socketMessage?.lastEvent ?? 'Waiting for updates'}</Text>
           </Card>
 
           <Card>
-            <Text style={styles.heading}>Last event</Text>
-            <Text style={styles.meta}>{socketMessage?.lastEvent ?? 'Waiting for updates'}</Text>
+            <Text style={styles.heading}>Proposal controls</Text>
+            <Text style={styles.meta}>Kick off or advance a proposal round from this device.</Text>
+            <Pressable
+              style={[styles.primaryButton, submitting && styles.buttonDisabled]}
+              onPress={async () => {
+                setSubmitting(true);
+                setSessionError(null);
+                try {
+                  await api.negotiations.propose(id);
+                  await refreshSession();
+                } catch (err) {
+                  setSessionError(err instanceof Error ? err.message : 'Unable to generate the next proposal round.');
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+              disabled={submitting}
+            >
+              <Text style={styles.primaryText}>{submitting ? 'Generating...' : 'Send proposal round'}</Text>
+            </Pressable>
           </Card>
+
+          {latestCounterpartProposal ? (
+            <Card>
+              <Text style={styles.heading}>Suggest a different time</Text>
+              <Text style={styles.meta}>Latest counterpart slot: {formatSlot(latestCounterpartProposal.slots[0]?.startsAt, latestCounterpartProposal.slots[0]?.endsAt)}</Text>
+              <Pressable style={styles.secondaryButton} onPress={() => setShowCounterForm((value) => !value)}>
+                <Text style={styles.secondaryButtonText}>{showCounterForm ? 'Hide counter form' : 'Counter with another slot'}</Text>
+              </Pressable>
+              {showCounterForm ? (
+                <CounterForm
+                  startsAt={counterStartsAt}
+                  endsAt={counterEndsAt}
+                  location={counterLocation}
+                  onStartsAtChange={setCounterStartsAt}
+                  onEndsAtChange={setCounterEndsAt}
+                  onLocationChange={setCounterLocation}
+                  onSubmit={submitCounterProposal}
+                  submitting={submitting}
+                />
+              ) : null}
+            </Card>
+          ) : null}
         </>
       ) : null}
 
@@ -172,9 +330,27 @@ export default function NegotiationScreen() {
             <Text style={styles.heading}>{hasCurrentManagerConfirmed ? 'Waiting for the other manager' : 'Manager approval required'}</Text>
             <Text style={styles.meta}>
               {hasCurrentManagerConfirmed
-                ? 'Your side is confirmed. The game will schedule after the other manager confirms.'
-                : 'Confirm the matched slot to finalize the game, or cancel if the agreement should be abandoned.'}
+                ? 'Your side is confirmed. The game schedules after the other manager confirms.'
+                : hasCounterpartManagerConfirmed
+                  ? 'The other manager already confirmed this slot. Your approval will schedule the game immediately.'
+                  : 'Confirm the matched slot now, or counter with a different time if this match should be adjusted.'}
             </Text>
+          </Card>
+
+          <Card>
+            <Text style={styles.heading}>Confirmation progress</Text>
+            <View style={styles.confirmationRow}>
+              <Text style={styles.detailLabel}>Your side</Text>
+              <Text style={hasCurrentManagerConfirmed ? styles.confirmedBadge : styles.pendingBadge}>
+                {hasCurrentManagerConfirmed ? 'Confirmed' : 'Pending'}
+              </Text>
+            </View>
+            <View style={styles.confirmationRow}>
+              <Text style={styles.detailLabel}>Other side</Text>
+              <Text style={hasCounterpartManagerConfirmed ? styles.confirmedBadge : styles.pendingBadge}>
+                {hasCounterpartManagerConfirmed ? 'Confirmed' : 'Pending'}
+              </Text>
+            </View>
           </Card>
 
           {!hasCurrentManagerConfirmed && agreedSlot ? (
@@ -196,6 +372,23 @@ export default function NegotiationScreen() {
             >
               <Text style={styles.primaryText}>{submitting ? 'Confirming...' : 'Confirm game'}</Text>
             </Pressable>
+          ) : null}
+
+          {!hasCurrentManagerConfirmed ? (
+            <Card>
+              <Text style={styles.heading}>Suggest different time</Text>
+              <Text style={styles.meta}>Countering moves the session back into proposal exchange with your new slot.</Text>
+              <CounterForm
+                startsAt={counterStartsAt}
+                endsAt={counterEndsAt}
+                location={counterLocation}
+                onStartsAtChange={setCounterStartsAt}
+                onEndsAtChange={setCounterEndsAt}
+                onLocationChange={setCounterLocation}
+                onSubmit={submitCounterProposal}
+                submitting={submitting}
+              />
+            </Card>
           ) : null}
         </>
       ) : null}
@@ -258,6 +451,66 @@ export default function NegotiationScreen() {
 }
 
 /**
+ * Minimal counter-proposal form shared by the proposing and pending-approval states.
+ */
+function CounterForm({
+  startsAt,
+  endsAt,
+  location,
+  onStartsAtChange,
+  onEndsAtChange,
+  onLocationChange,
+  onSubmit,
+  submitting,
+}: {
+  startsAt: string;
+  endsAt: string;
+  location: string;
+  onStartsAtChange: (value: string) => void;
+  onEndsAtChange: (value: string) => void;
+  onLocationChange: (value: string) => void;
+  onSubmit: () => void;
+  submitting: boolean;
+}) {
+  return (
+    <View style={styles.counterForm}>
+      <Text style={styles.detailLabel}>Counter start (ISO UTC)</Text>
+      <TextInput
+        style={styles.input}
+        value={startsAt}
+        onChangeText={onStartsAtChange}
+        autoCapitalize="none"
+        placeholder="2026-04-05T14:00:00Z"
+        placeholderTextColor="#8e846f"
+      />
+
+      <Text style={styles.detailLabel}>Counter end (ISO UTC)</Text>
+      <TextInput
+        style={styles.input}
+        value={endsAt}
+        onChangeText={onEndsAtChange}
+        autoCapitalize="none"
+        placeholder="2026-04-05T15:30:00Z"
+        placeholderTextColor="#8e846f"
+      />
+
+      <Text style={styles.detailLabel}>Location (optional)</Text>
+      <TextInput
+        style={styles.input}
+        value={location}
+        onChangeText={onLocationChange}
+        placeholder="Field 3"
+        placeholderTextColor="#8e846f"
+      />
+
+      <Pressable style={[styles.secondaryButton, submitting && styles.buttonDisabled]} onPress={onSubmit} disabled={submitting}>
+        <Text style={styles.secondaryButtonText}>{submitting ? 'Sending...' : 'Send counter proposal'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/**
  * Formats a proposed or agreed slot for human-readable mobile copy.
  *
  * @param startsAt ISO start timestamp.
@@ -288,6 +541,34 @@ function formatSlot(startsAt?: string, endsAt?: string): string {
   return `${date} · ${startTime} - ${endTime}`;
 }
 
+/**
+ * Builds a shareable invite payload that another device can paste into the join screen.
+ *
+ * The text stays readable for humans while remaining deterministic enough for the
+ * join screen parser to extract the required fields automatically.
+ *
+ * @param initiatorBaseUrl Base URL of the instance that created the negotiation.
+ * @param sessionId Negotiation session UUID.
+ * @param inviteToken One-time join token for the responder.
+ * @returns Multiline invite text suitable for share sheets, Messages, Mail, or Notes.
+ */
+function buildInviteShareText(
+  initiatorBaseUrl: string,
+  sessionId: string,
+  inviteToken: string,
+): string {
+  const deepLink = `fieldiq://join?initiatorBaseUrl=${encodeURIComponent(initiatorBaseUrl)}&sessionId=${encodeURIComponent(sessionId)}&inviteToken=${encodeURIComponent(inviteToken)}`;
+
+  return [
+    'FieldIQ negotiation invite',
+    `Initiator URL: ${initiatorBaseUrl}`,
+    `Session ID: ${sessionId}`,
+    `Invite Token: ${inviteToken}`,
+    '',
+    `Join link payload: ${deepLink}`,
+  ].join('\n');
+}
+
 const styles = StyleSheet.create({
   heading: {
     fontSize: 20,
@@ -301,6 +582,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     color: '#6e665a',
+    lineHeight: 20,
   },
   slot: {
     fontSize: 18,
@@ -309,6 +591,7 @@ const styles = StyleSheet.create({
   },
   error: {
     color: '#b42318',
+    lineHeight: 20,
   },
   primaryButton: {
     backgroundColor: '#14281d',
@@ -346,5 +629,60 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
+  },
+  findingPulse: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#d95d39',
+    alignSelf: 'center',
+    opacity: 0.22,
+  },
+  detailLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#14281d',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  detailValue: {
+    color: '#2b2d2f',
+    fontSize: 15,
+  },
+  inviteToken: {
+    color: '#14281d',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  sharePayload: {
+    marginTop: 12,
+    color: '#6e665a',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  confirmationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  confirmedBadge: {
+    color: '#126a3a',
+    fontWeight: '700',
+  },
+  pendingBadge: {
+    color: '#9a6700',
+    fontWeight: '700',
+  },
+  counterForm: {
+    gap: 10,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#c8c1b1',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    backgroundColor: '#f9f4eb',
   },
 });

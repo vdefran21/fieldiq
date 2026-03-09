@@ -20,7 +20,10 @@ import java.util.UUID
  * 1. [buildAuthorizeUrl] — generates the Google consent screen URL with required params.
  * 2. [exchangeCodeForTokens] — exchanges the auth code for access + refresh tokens.
  * 3. Tokens are encrypted via [TokenEncryptionConverter] (AES-256-GCM) before storage.
- * 4. After successful connection, an SQS `SYNC_CALENDAR` task is enqueued for the agent.
+ *
+ * Queue publication for post-connect `SYNC_CALENDAR` work happens in
+ * [com.fieldiq.api.GoogleCalendarController] after a successful exchange, because the
+ * controller also knows which team memberships should receive synced availability.
  *
  * **Privacy:** Only the `calendar.readonly` scope is requested. FieldIQ uses the
  * FreeBusy API endpoint — we never read event titles, descriptions, or attendees.

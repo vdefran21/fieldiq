@@ -27,3 +27,5 @@ coverage/
 # Misc
 *.log
 .fieldiq-dev/
+
+agent/dist/

@@ -88,5 +88,12 @@ class NotificationQueuePublisher(
                 .messageBody(objectMapper.writeValueAsString(payload))
                 .build(),
         )
+        logger.info(
+            "Queued notification task: notificationType={}, sessionId={}, eventId={}, teamCount={}",
+            payload["notificationType"],
+            payload["sessionId"],
+            payload["eventId"],
+            (payload["teamIds"] as? List<*>)?.size ?: 0,
+        )
     }
 }

@@ -43,6 +43,9 @@ export function encryptLikeBackend(plaintext: string): string {
  *
  * Without this, a short TOKEN_ENCRYPTION_KEY would produce a different
  * key than production, causing decryption failures in integration tests.
+ *
+ * @param keyString Raw configured token-encryption secret.
+ * @returns AES-256 key material derived with production-compatible rules.
  */
 function deriveKeyBytes(keyString: string): Buffer {
   const keyBytes = Buffer.from(keyString, 'utf8');

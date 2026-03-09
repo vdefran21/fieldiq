@@ -23,6 +23,7 @@ import com.fieldiq.repository.NegotiationProposalRepository
 import com.fieldiq.repository.NegotiationSessionRepository
 import com.fieldiq.security.HmacAuthenticationFilter
 import com.fieldiq.security.HmacService
+import com.fieldiq.security.JwtService
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -115,6 +116,7 @@ class NegotiationServiceTest {
             jwt = FieldIQProperties.JwtProperties(secret = "test-jwt-secret"),
             aws = FieldIQProperties.AwsProperties(),
         )
+        val jwtService = JwtService(properties)
 
         service = NegotiationService(
             sessionRepo = sessionRepo,
@@ -125,6 +127,7 @@ class NegotiationServiceTest {
             relayClient = relayClient,
             teamAccessGuard = teamAccessGuard,
             hmacService = hmacService,
+            jwtService = jwtService,
             properties = properties,
             redisTemplate = redisTemplate,
             objectMapper = objectMapper,
@@ -1618,6 +1621,66 @@ class NegotiationServiceTest {
             assertEquals("initiator", savedProposals.last().proposedBy)
             assertEquals(2, savedProposals.last().roundNumber)
             assertEquals(2, savedSessions.last().currentRound)
+        }
+
+        /**
+         * Managers should be able to counter after a matched slot is found, which moves
+         * the session back out of pending_approval and resumes proposal exchange.
+         */
+        @Test
+        @DisplayName("counter from pending approval resets the agreed slot and returns to proposing")
+        fun counterFromPendingApproval() {
+            val session = makeSession(
+                status = "pending_approval",
+                responderTeamId = teamBId,
+                responderInstance = instanceBUrl,
+                currentRound = 1,
+                initiatorConfirmed = false,
+                responderConfirmed = false,
+            ).copy(
+                agreedStartsAt = Instant.parse("2026-04-05T10:00:00Z"),
+                agreedEndsAt = Instant.parse("2026-04-05T11:30:00Z"),
+            )
+            every { sessionRepo.findById(sessionId) } returns Optional.of(session)
+            every { teamAccessGuard.requireManager(managerId, teamAId) } returns mockk()
+
+            val counterpartProposal = NegotiationProposal(
+                sessionId = sessionId,
+                proposedBy = "responder",
+                roundNumber = 1,
+                slots = "[]",
+            )
+            every { proposalRepo.findBySessionId(sessionId) } returns listOf(counterpartProposal)
+            val savedProposals = mutableListOf<NegotiationProposal>()
+            every { proposalRepo.save(capture(savedProposals)) } answers { firstArg() }
+            val savedSessions = mutableListOf<NegotiationSession>()
+            every { sessionRepo.save(capture(savedSessions)) } answers { firstArg() }
+            every {
+                valueOps.get("${HmacAuthenticationFilter.SESSION_KEY_PREFIX}$sessionId")
+            } returns sessionKeyBase64
+            every { relayClient.sendRelay(any(), any(), any(), any()) } returns
+                RelayResponse(sessionStatus = "proposing", currentRound = 2)
+
+            val request = RespondToProposalRequest(
+                responseStatus = "countered",
+                counterSlots = listOf(
+                    TimeSlotRequest(
+                        Instant.parse("2026-04-05T12:00:00Z"),
+                        Instant.parse("2026-04-05T13:30:00Z"),
+                        "Counter Field",
+                    ),
+                ),
+            )
+
+            service.respondToProposal(sessionId, managerId, request)
+
+            assertEquals("proposing", savedSessions.last().status)
+            assertNull(savedSessions.last().agreedStartsAt)
+            assertNull(savedSessions.last().agreedEndsAt)
+            assertFalse(savedSessions.last().initiatorConfirmed)
+            assertFalse(savedSessions.last().responderConfirmed)
+            assertEquals(2, savedSessions.last().currentRound)
+            assertEquals("initiator", savedProposals.last().proposedBy)
         }
     }
 

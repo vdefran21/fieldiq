@@ -54,6 +54,13 @@ let orgId: string;
 let teamId: string;
 let userId: string;
 
+/**
+ * Stable plaintext tokens used to seed encrypted calendar integration rows.
+ *
+ * The exact values are not important; what matters is that the worker decrypts
+ * backend-compatible ciphertext and passes the resulting access token through
+ * the Google FreeBusy client path.
+ */
 const TEST_ACCESS_TOKEN = 'ya29.integration-test-access-token';
 const TEST_REFRESH_TOKEN = '1//0d-integration-test-refresh-token';
 
@@ -84,6 +91,9 @@ function buildTask(): SyncCalendarTask {
 
 /**
  * Helper to mock the Google FreeBusy API response.
+ *
+ * Integration tests still mock Google because the contract under test is the
+ * worker's database behavior, not Google's upstream availability.
  */
 function mockFreeBusy(busyBlocks: Array<{ start: string; end: string }>) {
   const mockCalendar = google.calendar({ version: 'v3' });

@@ -41,3 +41,15 @@ export function createSqsClient(): SQSClient {
 export function getAgentTasksQueueUrl(): string {
   return config.aws.sqs.agentTasksQueue;
 }
+
+/**
+ * Returns the configured notifications queue URL.
+ *
+ * Notification delivery tasks are published separately from calendar sync so the
+ * agent can drain both streams without coupling their throughput.
+ *
+ * @returns Queue URL for notification messages.
+ */
+export function getNotificationsQueueUrl(): string {
+  return config.aws.sqs.notificationsQueue;
+}

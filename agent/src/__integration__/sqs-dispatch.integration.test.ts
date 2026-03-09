@@ -54,6 +54,9 @@ let orgId: string;
 let teamId: string;
 let userId: string;
 
+/**
+ * Stable plaintext tokens used to seed encrypted integration rows for SQS tests.
+ */
 const TEST_ACCESS_TOKEN = 'ya29.sqs-dispatch-test-token';
 const TEST_REFRESH_TOKEN = '1//0d-sqs-dispatch-refresh';
 

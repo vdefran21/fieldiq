@@ -213,6 +213,56 @@ class JwtServiceTest {
     }
 
     /**
+     * Tests for negotiation-scoped WebSocket token generation and validation.
+     *
+     * These tokens are intentionally narrower than access tokens: they expire quickly
+     * and are valid for exactly one negotiation session.
+     */
+    @Nested
+    @DisplayName("negotiation socket tokens")
+    inner class NegotiationSocketTokens {
+
+        /**
+         * Happy path: a generated socket token validates for the same negotiation ID
+         * and returns the original user UUID.
+         */
+        @Test
+        fun `should validate a socket token for the matching negotiation`() {
+            val userId = UUID.randomUUID()
+            val negotiationId = UUID.randomUUID()
+
+            val token = jwtService.generateNegotiationSocketToken(userId, negotiationId)
+
+            assertEquals(userId, jwtService.validateNegotiationSocketToken(token, negotiationId))
+        }
+
+        /**
+         * Session scoping: a socket token minted for one negotiation must be rejected
+         * when presented against a different negotiation path.
+         */
+        @Test
+        fun `should reject a socket token for a different negotiation`() {
+            val userId = UUID.randomUUID()
+            val token = jwtService.generateNegotiationSocketToken(userId, UUID.randomUUID())
+
+            assertNull(jwtService.validateNegotiationSocketToken(token, UUID.randomUUID()))
+        }
+
+        /**
+         * Token-type separation: a normal REST access token must not be accepted by
+         * the WebSocket handshake validator.
+         */
+        @Test
+        fun `should reject an access token in the socket validator`() {
+            val userId = UUID.randomUUID()
+            val negotiationId = UUID.randomUUID()
+            val accessToken = jwtService.generateAccessToken(userId)
+
+            assertNull(jwtService.validateNegotiationSocketToken(accessToken, negotiationId))
+        }
+    }
+
+    /**
      * Tests for [JwtService.generateRefreshToken].
      *
      * Verifies that refresh tokens are cryptographically random, correctly sized

@@ -41,7 +41,16 @@ export function decryptToken(ciphertext: string): string {
 
 /**
  * Derives a 32-byte AES key from a config string.
- * Matches the backend's key derivation logic.
+ *
+ * Matches the backend's key derivation logic exactly:
+ * - Keys longer than 32 bytes are truncated.
+ * - Keys shorter than 32 bytes are zero-padded.
+ *
+ * Keeping this behavior aligned is critical because the agent decrypts tokens
+ * written by the backend and would otherwise silently fail with auth-tag errors.
+ *
+ * @param keyString Raw configured token-encryption secret.
+ * @returns AES-256 key material suitable for `createDecipheriv`.
  */
 function deriveKeyBytes(keyString: string): Buffer {
   const keyBytes = Buffer.from(keyString, 'utf8');

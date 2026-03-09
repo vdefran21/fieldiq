@@ -11,7 +11,7 @@ import { config } from './config';
  * Uses a connection pool (max 5 connections) to handle concurrent
  * SQS message processing efficiently.
  */
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: config.database.connectionString,
   max: 5,
 });
@@ -32,10 +32,10 @@ export async function query(
 
 /**
  * Closes the database connection pool.
- * Called during graceful shutdown.
+ *
+ * Called during graceful shutdown and integration-test teardown so the process
+ * does not keep idle PostgreSQL sockets open after work completes.
  */
 export async function close(): Promise<void> {
   await pool.end();
 }
-
-export { pool };

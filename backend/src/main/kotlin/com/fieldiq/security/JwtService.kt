@@ -23,6 +23,10 @@ import javax.crypto.SecretKey
  * in the `sub` claim. Any FieldIQ instance can validate these tokens since they share
  * the same JWT secret — this supports the two-instance dev setup and horizontal scaling.
  *
+ * **Negotiation WebSocket tokens** are even shorter-lived JWTs scoped to one
+ * negotiation session. They are minted from a normal bearer-authenticated REST call
+ * and reduce the risk of exposing the long-lived access token in the WebSocket URL.
+ *
  * **Refresh tokens** are 32-byte cryptographically random strings. The raw token is
  * returned to the client; only a SHA-256 hash is stored in the database. This service
  * generates the raw tokens and provides hashing — storage is handled by [com.fieldiq.service.AuthService].
@@ -73,6 +77,29 @@ class JwtService(
     }
 
     /**
+     * Generates a short-lived token scoped to a single negotiation WebSocket subscription.
+     *
+     * The token contains the authenticated user in `sub`, a dedicated `type`, and the
+     * negotiation UUID in `negotiationId`. Handshake validation checks both the signature
+     * and the expected negotiation ID before accepting the socket.
+     *
+     * @param userId The authenticated user requesting realtime negotiation updates.
+     * @param negotiationId Negotiation session this token may subscribe to.
+     * @return Signed JWT string suitable only for the negotiation WebSocket handshake.
+     */
+    fun generateNegotiationSocketToken(userId: UUID, negotiationId: UUID): String {
+        val now = Instant.now()
+        return Jwts.builder()
+            .subject(userId.toString())
+            .claim("type", "negotiation_ws")
+            .claim("negotiationId", negotiationId.toString())
+            .issuedAt(Date.from(now))
+            .expiration(Date.from(now.plusMillis(properties.jwt.websocketExpirationMs)))
+            .signWith(signingKey())
+            .compact()
+    }
+
+    /**
      * Generates a cryptographically random refresh token.
      *
      * The token is 32 bytes of random data, Base64-URL-encoded for safe transport.
@@ -98,14 +125,53 @@ class JwtService(
      * @return The user [UUID] from the `sub` claim, or null if validation fails.
      */
     fun validateAccessToken(token: String): UUID? {
-        return try {
-            val claims = Jwts.parser()
+        val claims = parseClaims(token) ?: return null
+        return if (claims["type"] == "access") {
+            parseSubject(claims.subject)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Validates a negotiation WebSocket token against the expected session.
+     *
+     * @param token Short-lived socket token from the WebSocket query string.
+     * @param expectedNegotiationId Negotiation UUID encoded in the request path.
+     * @return The authenticated user ID when the token is valid for this negotiation.
+     */
+    fun validateNegotiationSocketToken(token: String, expectedNegotiationId: UUID): UUID? {
+        val claims = parseClaims(token) ?: return null
+        val negotiationId = claims["negotiationId"]?.toString()
+        if (claims["type"] != "negotiation_ws" || negotiationId != expectedNegotiationId.toString()) {
+            logger.debug("Negotiation socket token rejected for session {}", expectedNegotiationId)
+            return null
+        }
+
+        return parseSubject(claims.subject)
+    }
+
+    /**
+     * Returns the negotiation WebSocket token lifetime in seconds.
+     *
+     * @return Lifetime of socket tokens in seconds.
+     */
+    fun negotiationSocketExpirationSeconds(): Long =
+        properties.jwt.websocketExpirationMs / 1000
+
+    /**
+     * Parses and verifies the claims from a signed JWT.
+     *
+     * @param token Signed JWT string.
+     * @return Parsed claims payload, or null when validation fails.
+     */
+    private fun parseClaims(token: String) =
+        try {
+            Jwts.parser()
                 .verifyWith(signingKey())
                 .build()
                 .parseSignedClaims(token)
                 .payload
-
-            UUID.fromString(claims.subject)
         } catch (e: JwtException) {
             logger.debug("JWT validation failed: {}", e.message)
             null
@@ -113,7 +179,20 @@ class JwtService(
             logger.debug("JWT subject is not a valid UUID: {}", e.message)
             null
         }
-    }
+
+    /**
+     * Parses the subject claim into a UUID.
+     *
+     * @param subject Subject claim from a validated JWT.
+     * @return Parsed UUID or null when the subject is malformed.
+     */
+    private fun parseSubject(subject: String?): UUID? =
+        try {
+            subject?.let(UUID::fromString)
+        } catch (e: IllegalArgumentException) {
+            logger.debug("JWT subject is not a valid UUID: {}", e.message)
+            null
+        }
 
     /**
      * Computes a SHA-256 hash of a token string for secure database storage.

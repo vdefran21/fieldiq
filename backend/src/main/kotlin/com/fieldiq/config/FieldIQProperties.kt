@@ -14,6 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * - `fieldiq.jwt.*` — JWT token generation parameters
  * - `fieldiq.aws.*` — AWS SDK / LocalStack configuration
  * - `fieldiq.google.*` — Google OAuth credentials for calendar integration
+ * - `fieldiq.websocket.*` — negotiation WebSocket handshake configuration
  * - `fieldiq.encryption.*` — encryption keys for sensitive data at rest
  *
  * Activated by [AppConfig] via `@EnableConfigurationProperties`.
@@ -31,6 +32,7 @@ data class FieldIQProperties(
     val jwt: JwtProperties,
     val aws: AwsProperties,
     val google: GoogleProperties = GoogleProperties(),
+    val websocket: WebSocketProperties = WebSocketProperties(),
     val encryption: EncryptionProperties = EncryptionProperties(),
 ) {
 
@@ -68,11 +70,14 @@ data class FieldIQProperties(
      *   in production. Set via `JWT_SECRET` env var.
      * @property expirationMs Access token lifetime in milliseconds. Default: 15 minutes (900,000ms).
      * @property refreshExpirationMs Refresh token lifetime in milliseconds. Default: 30 days.
+     * @property websocketExpirationMs Short-lived negotiation WebSocket token lifetime
+     *   in milliseconds. Default: 2 minutes.
      */
     data class JwtProperties(
         val secret: String,
         val expirationMs: Long = 900_000,
         val refreshExpirationMs: Long = 2_592_000_000,
+        val websocketExpirationMs: Long = 120_000,
     )
 
     /**
@@ -127,6 +132,20 @@ data class FieldIQProperties(
         val clientId: String = "",
         val clientSecret: String = "",
         val redirectUri: String = "",
+    )
+
+    /**
+     * WebSocket handshake configuration for the negotiation realtime channel.
+     *
+     * Native mobile clients usually omit the `Origin` header, so origin validation is
+     * enforced only when an origin is present. These patterns are applied by both the
+     * WebSocket registry and the handshake interceptor to prevent accidental drift.
+     *
+     * @property allowedOriginPatterns Origin patterns permitted for browser-originated
+     *   negotiation subscriptions. Defaults to `*` for local development compatibility.
+     */
+    data class WebSocketProperties(
+        val allowedOriginPatterns: List<String> = listOf("*"),
     )
 
     /**
