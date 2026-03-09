@@ -15,7 +15,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@aws-sdk/client-sqs": "^3.500.0",
+    "@aws-sdk/client-sqs": "^3.1005.0",
     "googleapis": "^131.0.0",
     "pg": "^8.11.3",
     "dotenv": "^16.4.1"
