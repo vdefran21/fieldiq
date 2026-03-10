@@ -120,6 +120,55 @@ SPRING_PROFILES_ACTIVE=instance-a ./gradlew bootRun
 SPRING_PROFILES_ACTIVE=instance-b ./gradlew bootRun
 ```
 
+You can also use the repo orchestrator instead of starting the backends manually:
+
+```bash
+./dev.sh start
+```
+
+That command starts Docker infrastructure plus both backend instances and keeps the
+script attached to the current terminal.
+
+### Seed Demo Availability
+
+The negotiation demo depends on real `availability_windows`. Fresh local instances do
+not have that data by default, so seed deterministic recurring demo availability before
+running the cross-instance mobile proof-of-concept:
+
+```bash
+node ./scripts/seed-demo-availability.mjs --reset
+```
+
+This script uses the live auth/team/availability/scheduling APIs against both local
+instances, ensures one demo team per instance, seeds recurring manual availability,
+and verifies both per-instance suggestions and a real cross-instance mutual slot.
+
+### Demo Orchestration Helpers
+
+`dev.sh` now exposes explicit demo-only helpers so demo setup can be automated
+without changing the default local-development flow:
+
+```bash
+# Start the agent in detached mode
+./dev.sh start-agent
+
+# Seed deterministic demo availability on both instances
+./dev.sh seed-demo
+
+# Start two detached Expo Metro servers:
+# - Metro A targets backend instance A on :8080
+# - Metro B targets backend instance B on :8081
+./dev.sh start-mobile-demo
+
+# Or do the full detached demo bootstrap in one command
+./dev.sh demo-up
+```
+
+`./dev.sh demo-up` starts infra, both backends, the agent, seeds demo availability,
+and launches two Expo Metro servers on ports `8082` and `8083`. Use
+`FIELDIQ_DEMO_HOST=<lan-ip-or-hostname>` if the default LAN IP detection is not the
+right address for your phone or simulator workflow.
+
 ## Documentation
 
 | Document | Purpose |

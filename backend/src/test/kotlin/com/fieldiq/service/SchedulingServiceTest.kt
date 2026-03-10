@@ -57,6 +57,7 @@ class SchedulingServiceTest {
     private lateinit var service: SchedulingService
 
     private val teamId = UUID.randomUUID()
+    private val teamBId = UUID.randomUUID()
     private val orgId = UUID.randomUUID()
     private val userA = UUID.randomUUID()
     private val userB = UUID.randomUUID()
@@ -82,12 +83,16 @@ class SchedulingServiceTest {
         every { teamRepository.findById(teamId) } returns Optional.of(
             Team(id = teamId, orgId = orgId, name = "Test Team U12")
         )
+        every { teamRepository.findById(teamBId) } returns Optional.of(
+            Team(id = teamBId, orgId = orgId, name = "Test Team B U12")
+        )
         every { organizationRepository.findById(orgId) } returns Optional.of(
             Organization(id = orgId, name = "Test Org", slug = "test-org", timezone = "America/New_York")
         )
 
         // Default: no existing events
         every { eventRepository.findOverlappingEvents(teamId, any(), any()) } returns emptyList()
+        every { eventRepository.findOverlappingEvents(teamBId, any(), any()) } returns emptyList()
     }
 
     @Nested
@@ -475,6 +480,53 @@ class SchedulingServiceTest {
     inner class IntersectWindows {
 
         /**
+         * Verifies that the deterministic demo-seed baselines produce a mutual overlap.
+         *
+         * This protects the local proof-of-concept workflow where instance A seeds
+         * Saturday 09:00-12:00 and instance B seeds Saturday 10:00-13:00.
+         */
+        @Test
+        fun `demo seed baselines produce a mutual Saturday overlap`() {
+            setupMembers(listOf(userA), teamId)
+            setupMembers(listOf(userB), teamBId)
+            setupWindows(
+                listOf(
+                    makeWindow(userA, dayOfWeek = 6, start = "09:00", end = "12:00", type = "available", team = teamId),
+                    makeWindow(userA, dayOfWeek = 2, start = "18:00", end = "20:00", type = "available", team = teamId),
+                ),
+                teamId,
+            )
+            setupWindows(
+                listOf(
+                    makeWindow(userB, dayOfWeek = 6, start = "10:00", end = "13:00", type = "available", team = teamBId),
+                    makeWindow(userB, dayOfWeek = 4, start = "18:00", end = "20:00", type = "available", team = teamBId),
+                ),
+                teamBId,
+            )
+
+            val teamAWindows = service.findAvailableWindows(
+                teamId,
+                LocalDate.of(2026, 4, 4),
+                LocalDate.of(2026, 4, 4),
+                90,
+                preferredDays = listOf(6),
+            )
+            val teamBWindows = service.findAvailableWindows(
+                teamBId,
+                LocalDate.of(2026, 4, 4),
+                LocalDate.of(2026, 4, 4),
+                90,
+                preferredDays = listOf(6),
+            )
+
+            val result = service.intersectWindows(teamAWindows, teamBWindows)
+
+            assertFalse(result.isEmpty())
+            assertEquals(Instant.parse("2026-04-04T14:00:00Z"), result.first().startsAt)
+            assertEquals(Instant.parse("2026-04-04T16:00:00Z"), result.first().endsAt)
+        }
+
+        /**
          * Verifies that overlapping windows from two teams produce an intersection
          * with the correct time range and minimum confidence.
          */
@@ -628,11 +680,11 @@ class SchedulingServiceTest {
      *
      * @param userIds User IDs of the active team members.
      */
-    private fun setupMembers(userIds: List<UUID>) {
+    private fun setupMembers(userIds: List<UUID>, team: UUID = teamId) {
         val members = userIds.map { userId ->
-            TeamMember(teamId = teamId, userId = userId, role = "parent", isActive = true)
+            TeamMember(teamId = team, userId = userId, role = "parent", isActive = true)
         }
-        every { teamMemberRepository.findByTeamIdAndIsActiveTrue(teamId) } returns members
+        every { teamMemberRepository.findByTeamIdAndIsActiveTrue(team) } returns members
     }
 
     /**
@@ -640,8 +692,8 @@ class SchedulingServiceTest {
      *
      * @param windows The availability windows to return for the test team.
      */
-    private fun setupWindows(windows: List<AvailabilityWindow>) {
-        every { availabilityWindowRepository.findByTeamId(teamId) } returns windows
+    private fun setupWindows(windows: List<AvailabilityWindow>, team: UUID = teamId) {
+        every { availabilityWindowRepository.findByTeamId(team) } returns windows
     }
 
     /**
@@ -662,9 +714,10 @@ class SchedulingServiceTest {
         start: String,
         end: String,
         type: String,
+        team: UUID = teamId,
     ): AvailabilityWindow {
         return AvailabilityWindow(
-            teamId = teamId,
+            teamId = team,
             userId = userId,
             dayOfWeek = dayOfWeek?.toShort(),
             specificDate = specificDate,

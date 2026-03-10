@@ -340,7 +340,7 @@ export interface AvailabilityWindowDto {
  * Declares a new availability window for the authenticated user.
  * Exactly one of dayOfWeek or specificDate must be provided.
  *
- * Corresponds to Kotlin DTO: CreateAvailabilityWindowRequest (to be created in Sprint 2)
+ * Corresponds to Kotlin DTO: CreateAvailabilityWindowRequest
  */
 export interface CreateAvailabilityWindowRequest {
   /** UUID of the team this availability is for. */

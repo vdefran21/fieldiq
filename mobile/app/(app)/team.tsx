@@ -58,6 +58,11 @@ export default function TeamScreen() {
             <Text style={styles.secondaryButtonText}>Retry team load</Text>
           </Pressable>
         ) : null}
+        {team ? (
+          <Pressable style={styles.secondaryButton} onPress={() => router.push('./availability')}>
+            <Text style={styles.secondaryButtonText}>Manage availability</Text>
+          </Pressable>
+        ) : null}
       </Card>
 
       {team && membersLoading ? (

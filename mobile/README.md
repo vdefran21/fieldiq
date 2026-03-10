@@ -18,6 +18,7 @@ Implemented today:
 - login flow using `POST /auth/request-otp` and `POST /auth/verify-otp`
 - SecureStore session persistence
 - schedule, team, settings, and negotiation route scaffolding
+- recurring availability setup for the current manager and team
 - WebSocket subscription helper for negotiation updates
 - create-team flow from authenticated empty states
 - device registration using `POST /users/me/devices`
@@ -27,6 +28,40 @@ Not fully complete yet:
 - calendar connect UI
 - rich push delivery via Expo service and EAS project configuration
 - full end-to-end validation against live backend instances
+
+## Demo prerequisite: availability
+
+Cross-team negotiation only works when each instance has positive availability data.
+For local demos, seed deterministic recurring availability before testing the mobile
+negotiation flow:
+
+```bash
+node ../scripts/seed-demo-availability.mjs --reset
+```
+
+Inside the app, managers can also open the hidden `Availability` flow from the
+schedule or team screens to create recurring weekly baseline availability manually.
+The seed script validates that the two demo baselines still expose a mutual slot
+before you start the cross-instance negotiation proof-of-concept.
+
+If you prefer to orchestrate the demo from the repo root, `dev.sh` can now launch
+the mobile demo Metro servers for you:
+
+```bash
+cd /Users/thedaego/fieldiq
+./dev.sh start-mobile-demo
+```
+
+That command starts two detached Expo Metro processes:
+- Metro A on port `8082` with `EXPO_PUBLIC_API_URL=http://<demo-host>:8080`
+- Metro B on port `8083` with `EXPO_PUBLIC_API_URL=http://<demo-host>:8081`
+
+For the full detached demo stack, use:
+
+```bash
+cd /Users/thedaego/fieldiq
+./dev.sh demo-up
+```
 
 ## Prerequisites
 

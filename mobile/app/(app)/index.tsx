@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { router } from 'expo-router';
-import type { EventDto } from '../../../shared/types';
+import { router, useFocusEffect } from 'expo-router';
+import type { AvailabilityWindowDto, EventDto } from '../../../shared/types';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { api } from '../../services/api';
@@ -15,8 +15,19 @@ export default function ScheduleScreen() {
   const [events, setEvents] = useState<EventDto[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
+  const [teamAvailability, setTeamAvailability] = useState<AvailabilityWindowDto[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [eventsReloadKey, setEventsReloadKey] = useState(0);
   const teamId = team?.id ?? null;
+  const hasPositiveAvailability = teamAvailability.some((window) => window.windowType === 'available');
+  const needsAvailabilitySetup = !availabilityLoading && !hasPositiveAvailability;
+
+  useFocusEffect(
+    useCallback(() => {
+      setEventsReloadKey((value) => value + 1);
+    }, []),
+  );
 
   useEffect(() => {
     async function loadEvents() {
@@ -39,6 +50,29 @@ export default function ScheduleScreen() {
     }
 
     void loadEvents();
+  }, [teamId, eventsReloadKey]);
+
+  useEffect(() => {
+    async function loadAvailability() {
+      if (!teamId) {
+        setTeamAvailability([]);
+        setAvailabilityError(null);
+        return;
+      }
+
+      setAvailabilityLoading(true);
+      setAvailabilityError(null);
+
+      try {
+        setTeamAvailability(await api.availability.listTeam(teamId));
+      } catch (err) {
+        setAvailabilityError(err instanceof Error ? err.message : 'Unable to load team availability.');
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    }
+
+    void loadAvailability();
   }, [teamId, eventsReloadKey]);
 
   return (
@@ -68,7 +102,16 @@ export default function ScheduleScreen() {
       {team ? (
         <Card>
           <Text style={styles.sectionTitle}>Quick actions</Text>
-          <Text style={styles.muted}>Start real scheduling work from the mobile app instead of waiting on pre-seeded data.</Text>
+          <Text style={styles.muted}>
+            {needsAvailabilitySetup
+              ? 'Set baseline availability first so negotiations have real scheduling data to work with.'
+              : 'Start real scheduling work from the mobile app instead of waiting on pre-seeded data.'}
+          </Text>
+          {needsAvailabilitySetup ? (
+            <Pressable style={styles.primaryButton} onPress={() => router.push('./availability')}>
+              <Text style={styles.primaryButtonText}>Set availability</Text>
+            </Pressable>
+          ) : null}
           <Pressable style={styles.primaryButton} onPress={() => router.push('./start-negotiation')}>
             <Text style={styles.primaryButtonText}>Start negotiation</Text>
           </Pressable>
@@ -78,6 +121,20 @@ export default function ScheduleScreen() {
           <Pressable style={styles.secondaryButton} onPress={() => router.push('./join-negotiation')}>
             <Text style={styles.secondaryButtonText}>Join negotiation</Text>
           </Pressable>
+        </Card>
+      ) : null}
+
+      {team && availabilityLoading ? (
+        <Card>
+          <ActivityIndicator color="#d95d39" />
+          <Text style={styles.muted}>Loading team availability...</Text>
+        </Card>
+      ) : null}
+
+      {team && availabilityError ? (
+        <Card>
+          <Text style={styles.sectionTitle}>Availability unavailable</Text>
+          <Text style={styles.error}>{availabilityError}</Text>
         </Card>
       ) : null}
 
@@ -101,7 +158,11 @@ export default function ScheduleScreen() {
       {team && !eventsLoading && !eventsError && events.length === 0 ? (
         <Card>
           <Text style={styles.sectionTitle}>No events scheduled yet</Text>
-          <Text style={styles.muted}>Create an event, start a negotiation, or join an invite to put real schedule work in motion.</Text>
+          <Text style={styles.muted}>
+            {needsAvailabilitySetup
+              ? 'Set availability first, then create an event, start a negotiation, or join an invite to put real schedule work in motion.'
+              : 'Create an event, start a negotiation, or join an invite to put real schedule work in motion.'}
+          </Text>
         </Card>
       ) : null}
 

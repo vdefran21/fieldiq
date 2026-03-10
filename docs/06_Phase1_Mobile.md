@@ -10,6 +10,7 @@ iOS first. Keep it minimal -- the AI does the work, the UI just shows results an
 /login                  Phone number entry -> OTP verify -> JWT stored in SecureStore
 /(app)/index            Schedule feed: upcoming events, pending negotiations, create-team CTA when account has no teams
 /(app)/team             Roster list, member availability status, RSVP tracking, create-team CTA when account has no teams
+/(app)/availability     Manager baseline recurring availability setup for the current team
 /(app)/create-event     Lightweight event creation from the empty schedule state
 /(app)/start-negotiation Minimal negotiation-initiation form that routes into the live session
 /(app)/join-negotiation Cross-instance join flow using shared session details
@@ -23,6 +24,9 @@ First-login behavior matters for Phase 1 validation:
 - both screens should offer a fast create-team path so the dashboard can populate without separate backend setup
 - once a team exists, the schedule screen should also offer quick actions for `Create event`,
   `Start negotiation`, and `Join negotiation`
+- if the team has no positive availability windows yet, the schedule screen should
+  surface `Set availability` before negotiation so the manager understands why the
+  scheduler would otherwise fail immediately
 - push registration should be treated as optional in local development when Expo project metadata is not configured
 
 ---
