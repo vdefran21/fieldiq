@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { File, Paths } from 'expo-file-system';
 import { useLocalSearchParams } from 'expo-router';
 import type { EventDto, NegotiationProposalDto, NegotiationSessionDto } from '../../../../shared/types';
 import { Card } from '../../../components/Card';
@@ -159,6 +160,45 @@ export default function NegotiationScreen() {
     setSessionReloadKey((value) => value + 1);
   }
 
+  async function openCalendarFile() {
+    if (!confirmedEvent?.id) {
+      return;
+    }
+
+    setSubmitting(true);
+    setSessionError(null);
+
+    try {
+      const exportPayload = await api.events.downloadIcs(confirmedEvent.id);
+      const fileName = exportPayload.filename ?? `fieldiq-event-${confirmedEvent.id}.ics`;
+      const localFile = new File(Paths.cache, fileName);
+
+      if (localFile.exists) {
+        localFile.delete();
+      }
+
+      localFile.write(exportPayload.body);
+
+      const canOpen = await Linking.canOpenURL(localFile.uri);
+      if (canOpen) {
+        await Linking.openURL(localFile.uri);
+        return;
+      }
+
+      await Share.share({
+        title: 'FieldIQ calendar export',
+        url: localFile.uri,
+        message: 'FieldIQ calendar export',
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to download the calendar file.';
+      setSessionError(message);
+      Alert.alert('Calendar export failed', message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function submitCounterProposal() {
     if (!counterStartsAt.trim() || !counterEndsAt.trim()) {
       setSessionError('Counter proposals need both a start and end time.');
@@ -185,7 +225,9 @@ export default function NegotiationScreen() {
       setCounterEndsAt('');
       setCounterLocation('');
     } catch (err) {
-      setSessionError(err instanceof Error ? err.message : 'Unable to send the counter proposal.');
+      const message = err instanceof Error ? err.message : 'Unable to send the counter proposal.';
+      setSessionError(message);
+      Alert.alert('Counter proposal failed', message);
     } finally {
       setSubmitting(false);
     }
@@ -407,8 +449,8 @@ export default function NegotiationScreen() {
               {calendarUrl ? 'Download the iCalendar file to add the confirmed game to a personal calendar.' : 'Waiting for the confirmed event record to expose the calendar file.'}
             </Text>
             {calendarUrl ? (
-              <Pressable style={styles.secondaryButton} onPress={() => void Linking.openURL(calendarUrl)}>
-                <Text style={styles.secondaryButtonText}>Add to calendar</Text>
+              <Pressable style={[styles.secondaryButton, submitting && styles.buttonDisabled]} onPress={() => void openCalendarFile()} disabled={submitting}>
+                <Text style={styles.secondaryButtonText}>{submitting ? 'Preparing file...' : 'Add to calendar'}</Text>
               </Pressable>
             ) : null}
           </Card>

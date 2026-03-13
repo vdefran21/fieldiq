@@ -1682,6 +1682,64 @@ class NegotiationServiceTest {
             assertEquals(2, savedSessions.last().currentRound)
             assertEquals("initiator", savedProposals.last().proposedBy)
         }
+
+        /**
+         * Managers can revise a matched slot they originally proposed, so pending-approval
+         * counters must not require a prior counterpart proposal to exist locally.
+         */
+        @Test
+        @DisplayName("counter from pending approval can revise a self-originated matched slot")
+        fun counterFromPendingApprovalWithoutCounterpartProposal() {
+            val session = makeSession(
+                status = "pending_approval",
+                responderTeamId = teamBId,
+                responderInstance = instanceBUrl,
+                currentRound = 1,
+            ).copy(
+                agreedStartsAt = Instant.parse("2026-04-05T10:00:00Z"),
+                agreedEndsAt = Instant.parse("2026-04-05T11:30:00Z"),
+            )
+            every { sessionRepo.findById(sessionId) } returns Optional.of(session)
+            every { teamAccessGuard.requireManager(managerId, teamAId) } returns mockk()
+
+            val localMatchedProposal = NegotiationProposal(
+                sessionId = sessionId,
+                proposedBy = "initiator",
+                roundNumber = 1,
+                slots = "[]",
+            )
+            every { proposalRepo.findBySessionId(sessionId) } returns listOf(localMatchedProposal)
+            val savedProposals = mutableListOf<NegotiationProposal>()
+            every { proposalRepo.save(capture(savedProposals)) } answers { firstArg() }
+            val savedSessions = mutableListOf<NegotiationSession>()
+            every { sessionRepo.save(capture(savedSessions)) } answers { firstArg() }
+            every {
+                valueOps.get("${HmacAuthenticationFilter.SESSION_KEY_PREFIX}$sessionId")
+            } returns sessionKeyBase64
+            every { relayClient.sendRelay(any(), any(), any(), any()) } returns
+                RelayResponse(sessionStatus = "proposing", currentRound = 2)
+
+            val request = RespondToProposalRequest(
+                responseStatus = "countered",
+                counterSlots = listOf(
+                    TimeSlotRequest(
+                        Instant.parse("2026-04-05T12:00:00Z"),
+                        Instant.parse("2026-04-05T13:30:00Z"),
+                        "Counter Field",
+                    ),
+                ),
+            )
+
+            service.respondToProposal(sessionId, managerId, request)
+
+            assertEquals(1, savedProposals.size)
+            assertEquals("initiator", savedProposals.last().proposedBy)
+            assertEquals(2, savedProposals.last().roundNumber)
+            assertEquals("proposing", savedSessions.last().status)
+            assertEquals(2, savedSessions.last().currentRound)
+            assertNull(savedSessions.last().agreedStartsAt)
+            assertNull(savedSessions.last().agreedEndsAt)
+        }
     }
 
     @Nested
@@ -1786,6 +1844,56 @@ class NegotiationServiceTest {
             val result = service.processIncomingRelay(sessionId, relay)
 
             assertEquals("failed", result.sessionStatus)
+        }
+
+        /**
+         * When a counter arrives after both sides had a matched slot, the receiver must clear the
+         * old agreement and move back to proposing so the next round can continue on both instances.
+         */
+        @Test
+        @DisplayName("counter from pending approval clears agreed slot and reopens proposals")
+        fun counterFromPendingApprovalReopensProposals() {
+            val session = makeSession(
+                status = "pending_approval",
+                responderTeamId = teamBId,
+                currentRound = 1,
+                initiatorConfirmed = true,
+                responderConfirmed = false,
+            ).copy(
+                agreedStartsAt = Instant.parse("2026-04-05T10:00:00Z"),
+                agreedEndsAt = Instant.parse("2026-04-05T11:30:00Z"),
+                agreedLocation = "Original Field",
+            )
+            every { sessionRepo.findById(sessionId) } returns Optional.of(session)
+            every { proposalRepo.findBySessionIdAndRoundNumber(sessionId, 1) } returns emptyList()
+            every { proposalRepo.save(any()) } answers { firstArg() }
+            val savedSessions = mutableListOf<NegotiationSession>()
+            every { sessionRepo.save(capture(savedSessions)) } answers { firstArg() }
+            every { schedulingService.findAvailableWindows(any(), any(), any(), any()) } returns emptyList()
+            every { schedulingService.intersectWindows(any(), any()) } returns emptyList()
+
+            val relay = RelayRequest(
+                action = "respond",
+                roundNumber = 1,
+                proposalId = UUID.randomUUID().toString(),
+                actor = "initiator",
+                responseStatus = "countered",
+                slots = listOf(
+                    RelaySlot(Instant.parse("2026-04-05T13:00:00Z"), Instant.parse("2026-04-05T14:30:00Z")),
+                ),
+            )
+
+            val result = service.processIncomingRelay(sessionId, relay)
+
+            assertEquals("proposing", result.sessionStatus)
+            assertEquals(2, result.currentRound)
+            assertEquals("proposing", savedSessions.last().status)
+            assertEquals(2, savedSessions.last().currentRound)
+            assertNull(savedSessions.last().agreedStartsAt)
+            assertNull(savedSessions.last().agreedEndsAt)
+            assertNull(savedSessions.last().agreedLocation)
+            assertFalse(savedSessions.last().initiatorConfirmed)
+            assertFalse(savedSessions.last().responderConfirmed)
         }
 
         /**

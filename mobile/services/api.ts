@@ -81,6 +81,22 @@ export class ApiError extends Error {
 }
 
 /**
+ * Authenticated binary payload returned by non-JSON backend endpoints.
+ *
+ * This is used for download-style endpoints such as the Phase 1 iCalendar export,
+ * where the mobile app must preserve response bytes and filename metadata instead
+ * of trying to parse the body as JSON.
+ */
+export interface BinaryResponse {
+  /** Raw response bytes decoded into a UTF-8 string for local file persistence. */
+  body: string;
+  /** Server-advertised content type, if one was provided. */
+  contentType: string | null;
+  /** Suggested filename parsed from `Content-Disposition`, if present. */
+  filename: string | null;
+}
+
+/**
  * Lightweight profile payload returned by `GET /users/me`.
  *
  * The mobile app currently uses this shape to determine whether the manager has
@@ -232,6 +248,80 @@ async function requestWithBase<T>(baseUrl: string, path: string, init: RequestIn
   }
 
   return JSON.parse(text) as T;
+}
+
+/**
+ * Extracts a download filename from an HTTP `Content-Disposition` header.
+ *
+ * @param value Raw header value returned by the backend.
+ * @returns Suggested filename, or `null` when no filename is advertised.
+ */
+function parseContentDispositionFilename(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const quoted = value.match(/filename="([^"]+)"/i);
+  if (quoted?.[1]) {
+    return quoted[1];
+  }
+
+  const unquoted = value.match(/filename=([^;]+)/i);
+  return unquoted?.[1]?.trim() ?? null;
+}
+
+/**
+ * Executes an authenticated request whose response body should be treated as raw text.
+ *
+ * The mobile app uses this for the protected `.ics` export. Reusing the normal
+ * request path would incorrectly try to JSON-decode the calendar payload.
+ *
+ * @param path Backend-relative API path beginning with `/`.
+ * @param init Fetch configuration, including method overrides when needed.
+ * @param retrying Whether this call is already the post-refresh retry attempt.
+ * @returns Text payload plus download metadata from the backend response headers.
+ * @throws ApiError When the backend rejects the request.
+ * @throws Error When the network transport fails before a response is received.
+ */
+async function requestText(path: string, init: RequestInit = {}, retrying = false): Promise<BinaryResponse> {
+  const session = await getStoredSession();
+  const headers = new Headers(init.headers);
+  if (session?.accessToken) {
+    headers.set('Authorization', `Bearer ${session.accessToken}`);
+  }
+
+  const method = init.method ?? 'GET';
+  const url = `${API_BASE}${path}`;
+  logApiBaseOnce();
+  logApiDebug(`request ${method} ${url} retry=${retrying} auth=${session?.accessToken ? 'yes' : 'no'}`);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logApiDebug(`transport error ${method} ${url}: ${message}`);
+    throw error;
+  }
+
+  logApiDebug(`response ${method} ${url} -> ${response.status}`);
+  if (response.status === 401 && session?.refreshToken && !retrying) {
+    logApiDebug(`refreshing session after 401 from ${method} ${url}`);
+    await refreshSession(session.refreshToken);
+    return requestText(path, init, true);
+  }
+
+  if (!response.ok) {
+    const body = await response.text();
+    logApiDebug(`api error ${method} ${url} -> ${response.status} ${parseErrorMessage(body, response.statusText)}`);
+    throw new ApiError(parseErrorMessage(body, response.statusText), response.status);
+  }
+
+  return {
+    body: await response.text(),
+    contentType: response.headers.get('Content-Type'),
+    filename: parseContentDispositionFilename(response.headers.get('Content-Disposition')),
+  };
 }
 
 /**
@@ -414,6 +504,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
+    /**
+     * Downloads the authenticated iCalendar export for one scheduled event.
+     *
+     * @param eventId Event whose `.ics` payload should be exported.
+     * @returns Calendar file contents plus filename/content-type metadata.
+     */
+    downloadIcs: (eventId: string) => requestText(`/events/${eventId}/ics`),
   },
   /**
    * Availability endpoints used by the recurring baseline setup flow.

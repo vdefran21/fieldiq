@@ -1,0 +1,136 @@
+meta {
+  name: 11-counterFromPendingApproval
+  type: http
+  seq: 11
+}
+
+docs {
+  Creates a matched negotiation, counters from pending_approval, and verifies both
+  instances reopen the session in proposing so the next proposal round can continue.
+}
+
+script:pre-request {
+  const { expect } = require('chai');
+  const { loginAs, ensureTeam, createTeamWith, createAvailabilityWith, getResource, postResource } = require('./scripts/test-helpers.js');
+
+  try {
+    const responderBaseUrl = 'http://localhost:8081';
+
+    await loginAs('manager-a');
+    const initiatorTeam = await ensureTeam();
+
+    await createAvailabilityWith({
+      teamId: initiatorTeam.id,
+      dayOfWeek: 6,
+      startTime: '09:00',
+      endTime: '17:00',
+      windowType: 'available',
+    });
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() + 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 14);
+    const fmt = (d) => d.toISOString().split('T')[0];
+
+    const counterDate = new Date(start);
+    while (counterDate.getUTCDay() !== 6) {
+      counterDate.setUTCDate(counterDate.getUTCDate() + 1);
+    }
+    const counterDateIso = counterDate.toISOString().split('T')[0];
+
+    const initResp = await postResource('negotiations', {
+      teamId: initiatorTeam.id,
+      dateRangeStart: fmt(start),
+      dateRangeEnd: fmt(end),
+      durationMinutes: 90,
+    });
+
+    const sessionId = initResp.data.id;
+    const inviteToken = initResp.data.inviteToken;
+
+    await loginAs('manager-b', { baseUrl: responderBaseUrl });
+    const responderTeamResp = await createTeamWith(
+      { name: 'Counter Flow Responder U12' },
+      { baseUrl: responderBaseUrl }
+    );
+    const responderTeamId = responderTeamResp.data.id;
+
+    await createAvailabilityWith({
+      teamId: responderTeamId,
+      baseUrl: responderBaseUrl,
+      dayOfWeek: 6,
+      startTime: '09:00',
+      endTime: '17:00',
+      windowType: 'available',
+    });
+
+    await postResource(`negotiations/${sessionId}/join`, {
+      inviteToken,
+      responderTeamId,
+      responderInstance: responderBaseUrl,
+    });
+
+    await loginAs('manager-b', { baseUrl: responderBaseUrl });
+    await postResource(`negotiations/${sessionId}/propose`, null, responderBaseUrl);
+    await loginAs('manager-a');
+
+    const counterResponse = await postResource(`negotiations/${sessionId}/respond`, {
+      responseStatus: 'countered',
+      counterSlots: [
+        {
+          startsAt: `${counterDateIso}T18:00:00.000Z`,
+          endsAt: `${counterDateIso}T19:30:00.000Z`,
+          location: 'Counter Field',
+        },
+      ],
+    });
+
+    expect(counterResponse.status).to.equal(200);
+    expect(counterResponse.data.status).to.equal('proposing');
+    expect(counterResponse.data.currentRound).to.equal(2);
+    expect(counterResponse.data.agreedStartsAt).to.be.oneOf([null, undefined]);
+    expect(counterResponse.data.agreedEndsAt).to.be.oneOf([null, undefined]);
+
+    await loginAs('manager-b', { baseUrl: responderBaseUrl });
+    const remoteSession = await getResource(`negotiations/${sessionId}`, responderBaseUrl);
+
+    expect(remoteSession.status).to.equal(200);
+    expect(remoteSession.data.status).to.equal('proposing');
+    expect(remoteSession.data.currentRound).to.equal(2);
+    expect(remoteSession.data.agreedStartsAt).to.be.oneOf([null, undefined]);
+    expect(remoteSession.data.agreedEndsAt).to.be.oneOf([null, undefined]);
+
+    await loginAs('manager-a');
+
+    bru.setVar('counterSessionId', sessionId);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{baseUrl}}/negotiations/{{counterSessionId}}/propose
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.roundNumber: eq 3
+}
+
+tests {
+  const { expect } = require('chai');
+
+  test('proposal exchange resumes with a new round after the counter', () => {
+    expect(res.body.proposedBy).to.equal('initiator');
+    expect(res.body.slots).to.be.an('array');
+    expect(res.body.slots.length).to.be.greaterThan(0);
+  });
+}

@@ -787,7 +787,9 @@ class NegotiationService(
      * Updates the matching proposal's response status. If the response is "countered" and
      * includes slots, creates a counter-proposal record, intersects with local availability,
      * and transitions based on the result (match → pending_approval, max rounds → failed,
-     * else stays in proposing).
+     * else stays in proposing). Counters received while a session is already in
+     * `pending_approval` clear the previously agreed slot and both confirmation flags before
+     * proposal exchange resumes.
      *
      * @param session The local negotiation session.
      * @param relay The relay request containing the response and optional counter-slots.
@@ -821,7 +823,17 @@ class NegotiationService(
                 ),
             )
 
-            val updatedSession = session.copy(currentRound = counterRound, updatedAt = Instant.now())
+            val counteredFromPendingApproval = session.status == "pending_approval"
+            val updatedSession = session.copy(
+                status = if (counteredFromPendingApproval) "proposing" else session.status,
+                currentRound = counterRound,
+                agreedStartsAt = if (counteredFromPendingApproval) null else session.agreedStartsAt,
+                agreedEndsAt = if (counteredFromPendingApproval) null else session.agreedEndsAt,
+                agreedLocation = if (counteredFromPendingApproval) null else session.agreedLocation,
+                initiatorConfirmed = if (counteredFromPendingApproval) false else session.initiatorConfirmed,
+                responderConfirmed = if (counteredFromPendingApproval) false else session.responderConfirmed,
+                updatedAt = Instant.now(),
+            )
             sessionRepo.save(updatedSession)
 
             // Intersect counter with local availability
@@ -855,6 +867,7 @@ class NegotiationService(
                 )
                 sessionRepo.save(matched)
                 logEvent(session.id, "match_found", "system")
+                publishSessionUpdate(matched, "match_found")
                 return RelayResponse(
                     sessionStatus = "pending_approval",
                     currentRound = counterRound,
@@ -867,7 +880,15 @@ class NegotiationService(
                 val failed = updatedSession.copy(status = "failed", updatedAt = Instant.now())
                 sessionRepo.save(failed)
                 logEvent(session.id, "session_failed", "system", """{"reason":"max_rounds_exceeded"}""")
+                publishSessionUpdate(failed, "session_failed")
                 return RelayResponse(sessionStatus = "failed", currentRound = counterRound)
+            }
+
+            if (counteredFromPendingApproval) {
+                logEvent(session.id, "approval_countered", relay.actor)
+                publishSessionUpdate(updatedSession, "approval_countered")
+            } else {
+                publishSessionUpdate(updatedSession, "counter_received")
             }
 
             return RelayResponse(sessionStatus = updatedSession.status, currentRound = counterRound)
@@ -1074,8 +1095,9 @@ class NegotiationService(
      *
      * Updates the latest proposal's response status and optionally triggers
      * a counter-proposal if the response is "countered". When a session is already in
-     * `pending_approval`, a counter-response clears the agreed slot and moves the session
-     * back to `proposing`.
+     * `pending_approval`, either manager may request a different time even if the matched
+     * slot originated from their own proposal; the counter-response clears the agreed slot
+     * and moves the session back to `proposing`.
      *
      * @param sessionId UUID of the negotiation session.
      * @param userId UUID of the authenticated user.
@@ -1097,19 +1119,28 @@ class NegotiationService(
         val actor = determineActor(session, userId)
         val counterpartActor = if (actor == "initiator") "responder" else "initiator"
 
-        // Find the latest proposal from the counterpart
         val proposals = proposalRepo.findBySessionId(sessionId)
-        val latestProposal = proposals
+        val latestCounterpartProposal = proposals
             .filter { it.proposedBy == counterpartActor }
             .maxByOrNull { it.roundNumber }
+        val latestProposal: NegotiationProposal = latestCounterpartProposal
+            ?: (
+                if (canCounterFromPendingApproval) {
+                    proposals.maxByOrNull { it.roundNumber }
+                } else {
+                    null
+                }
+                )
             ?: throw EntityNotFoundException("No proposals found from counterpart")
 
-        // Update proposal response status
-        val updatedProposal = latestProposal.copy(
-            responseStatus = request.responseStatus,
-            rejectionReason = request.rejectionReason,
-        )
-        proposalRepo.save(updatedProposal)
+        // Update the counterpart's proposal status when one exists locally.
+        if (latestCounterpartProposal != null) {
+            val updatedProposal = latestCounterpartProposal.copy(
+                responseStatus = request.responseStatus,
+                rejectionReason = request.rejectionReason,
+            )
+            proposalRepo.save(updatedProposal)
+        }
 
         if (request.responseStatus == "countered" && !request.counterSlots.isNullOrEmpty()) {
             val counterRound = latestProposal.roundNumber + 1
@@ -1152,7 +1183,7 @@ class NegotiationService(
             val responseRelay = RelayRequest(
                 action = "respond",
                 roundNumber = latestProposal.roundNumber,
-                proposalId = latestProposal.id.toString(),
+                proposalId = latestCounterpartProposal?.id?.toString() ?: latestProposal.id.toString(),
                 actor = actor,
                 responseStatus = request.responseStatus,
                 rejectionReason = request.rejectionReason,

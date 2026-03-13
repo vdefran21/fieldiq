@@ -1,0 +1,141 @@
+meta {
+  name: 12-counterOwnMatchedProposal
+  type: http
+  seq: 12
+}
+
+docs {
+  Verifies that a manager can request a different time from pending_approval even
+  when the matched slot originated from that same manager's proposal.
+}
+
+script:pre-request {
+  const { expect } = require('chai');
+  const { loginAs, createTeamWith, createAvailabilityWith, getResource, postResource } = require('./scripts/test-helpers.js');
+
+  try {
+    const initiatorBaseUrl = 'http://localhost:8081';
+    const responderBaseUrl = 'http://localhost:8080';
+
+    await loginAs('manager-b', { baseUrl: initiatorBaseUrl });
+    const initiatorTeamResp = await createTeamWith(
+      { name: 'Own Counter Initiator U12' },
+      { baseUrl: initiatorBaseUrl }
+    );
+    const initiatorTeamId = initiatorTeamResp.data.id;
+
+    await createAvailabilityWith({
+      teamId: initiatorTeamId,
+      baseUrl: initiatorBaseUrl,
+      dayOfWeek: 6,
+      startTime: '10:00',
+      endTime: '13:00',
+      windowType: 'available',
+    });
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() + 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 14);
+    const fmt = (d) => d.toISOString().split('T')[0];
+
+    const counterDate = new Date(start);
+    while (counterDate.getUTCDay() !== 6) {
+      counterDate.setUTCDate(counterDate.getUTCDate() + 1);
+    }
+    const counterDateIso = counterDate.toISOString().split('T')[0];
+
+    const initResp = await postResource('negotiations', {
+      teamId: initiatorTeamId,
+      dateRangeStart: fmt(start),
+      dateRangeEnd: fmt(end),
+      durationMinutes: 90,
+    }, initiatorBaseUrl);
+
+    const sessionId = initResp.data.id;
+    const inviteToken = initResp.data.inviteToken;
+
+    await loginAs('manager-a', { baseUrl: responderBaseUrl });
+    const responderTeamResp = await createTeamWith(
+      { name: 'Own Counter Responder U12' },
+      { baseUrl: responderBaseUrl }
+    );
+    const responderTeamId = responderTeamResp.data.id;
+
+    await createAvailabilityWith({
+      teamId: responderTeamId,
+      baseUrl: responderBaseUrl,
+      dayOfWeek: 6,
+      startTime: '09:00',
+      endTime: '12:00',
+      windowType: 'available',
+    });
+
+    await postResource(`negotiations/${sessionId}/join`, {
+      inviteToken,
+      responderTeamId,
+      responderInstance: responderBaseUrl,
+    }, initiatorBaseUrl);
+
+    await loginAs('manager-b', { baseUrl: initiatorBaseUrl });
+    await postResource(`negotiations/${sessionId}/propose`, null, initiatorBaseUrl);
+
+    const counterResponse = await postResource(`negotiations/${sessionId}/respond`, {
+      responseStatus: 'countered',
+      counterSlots: [
+        {
+          startsAt: `${counterDateIso}T18:00:00.000Z`,
+          endsAt: `${counterDateIso}T19:30:00.000Z`,
+          location: 'Counter Field',
+        },
+      ],
+    }, initiatorBaseUrl);
+
+    expect(counterResponse.status).to.equal(200);
+    expect(counterResponse.data.status).to.equal('proposing');
+    expect(counterResponse.data.currentRound).to.equal(2);
+    expect(counterResponse.data.agreedStartsAt).to.be.oneOf([null, undefined]);
+    expect(counterResponse.data.agreedEndsAt).to.be.oneOf([null, undefined]);
+
+    await loginAs('manager-a', { baseUrl: responderBaseUrl });
+    const remoteSession = await getResource(`negotiations/${sessionId}`, responderBaseUrl);
+
+    expect(remoteSession.status).to.equal(200);
+    expect(remoteSession.data.status).to.equal('proposing');
+    expect(remoteSession.data.currentRound).to.equal(2);
+    expect(remoteSession.data.agreedStartsAt).to.be.oneOf([null, undefined]);
+    expect(remoteSession.data.agreedEndsAt).to.be.oneOf([null, undefined]);
+
+    await loginAs('manager-b', { baseUrl: initiatorBaseUrl });
+    bru.setVar('counterOwnSessionId', sessionId);
+    bru.setVar('counterOwnBaseUrl', initiatorBaseUrl);
+  } catch (e) {
+    throw new Error(`pre-request failure: ${e.message || e}`);
+  }
+}
+
+post {
+  url: {{counterOwnBaseUrl}}/negotiations/{{counterOwnSessionId}}/propose
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.roundNumber: eq 3
+}
+
+tests {
+  const { expect } = require('chai');
+
+  test('proposal exchange resumes after revising your own matched slot', () => {
+    expect(res.body.proposedBy).to.equal('initiator');
+    expect(res.body.slots).to.be.an('array');
+    expect(res.body.slots.length).to.be.greaterThan(0);
+  });
+}
