@@ -63,7 +63,7 @@ fieldiq/
 ├── agent/                   Node.js/TypeScript SQS workers (see agent/README.md)
 ├── mobile/                  React Native Expo app (iOS)
 ├── shared/types/            TypeScript API contract interfaces
-├── docs/                    Phase 1 implementation plans (00-08) + tracking
+├── docs/                    Documentation hub (specs, status, security, product, archive)
 ├── infra/                   LocalStack init scripts
 ├── docker-compose.yml       Full local dev environment
 └── CLAUDE.md                Architecture decisions & coding standards
@@ -176,8 +176,8 @@ right address for your phone or simulator workflow.
 | [CLAUDE.md](CLAUDE.md) | Architecture decisions, coding standards, KDoc requirements |
 | [backend/README.md](backend/README.md) | Backend setup, profiles, config, testing, troubleshooting |
 | [agent/README.md](agent/README.md) | Agent setup, env vars, worker responsibilities, troubleshooting |
-| [docs/](docs/) | Phase 1 implementation plans (00–08: schema, auth, backend, negotiation, agent, mobile, CI, architecture) |
-| [docs/IMPLEMENTATION_TRACKING.md](docs/IMPLEMENTATION_TRACKING.md) | Sprint progress tracker |
+| [docs/README.md](docs/README.md) | Documentation map, authority model, and reading order |
+| [docs/status/implementation-tracking.md](docs/status/implementation-tracking.md) | Sprint progress tracker |
 
 ## License
 

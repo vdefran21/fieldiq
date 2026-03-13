@@ -324,5 +324,5 @@ a different identity on the same channel. The V4 partial index was replaced with
 `(channel, token_hash, identifier_hash) WHERE used_at IS NULL` to match the new
 3-column query pattern.
 
-See `docs/02_Phase1_Auth_Calendar.md` for the full auth flow and identifier binding
+See `docs/specs/phase-1/02-auth-calendar.md` for the full auth flow and identifier binding
 security details.

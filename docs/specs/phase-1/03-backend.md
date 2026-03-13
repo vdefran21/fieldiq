@@ -113,6 +113,7 @@ SCHEDULING (deterministic -- no LLM, runs in backend)
 NEGOTIATION (core IP)
   POST /negotiations              -> initiate cross-team negotiation session
   GET  /negotiations/:sessionId   -> get session state + proposals
+  POST /negotiations/:sessionId/socket-token  -> short-lived WS token for realtime updates
   POST /negotiations/:sessionId/join          -> responder joins session
   POST /negotiations/:sessionId/propose       -> send slot proposals
   POST /negotiations/:sessionId/respond       -> accept/reject/counter proposals
@@ -141,7 +142,10 @@ The mobile app subscribes to negotiation status updates via WebSocket. This prov
 
 ```
 Connection: WS /ws/negotiations/:sessionId
-Auth: JWT passed as query param ?token=... (validated on connect)
+Auth:
+  1. Client calls POST /negotiations/:sessionId/socket-token with bearer auth
+  2. Backend returns a short-lived negotiation-scoped token
+  3. Client connects with ?wsToken=... (validated on connect)
 
 Server -> Client messages:
 {
@@ -180,6 +184,8 @@ Server -> Client messages:
 ```
 
 **Scope for Phase 1:** Server-to-client only (no client-to-server messages over WS). All mutations go through REST endpoints. The WebSocket is purely for push updates.
+
+**Current hardening note:** The short-lived `wsToken` reduces exposure versus reusing the primary access JWT in the WebSocket URL. Before wider beta, handshake URLs / query params should be redacted in logs and websocket sessions should close on logout or token expiry.
 
 ---
 

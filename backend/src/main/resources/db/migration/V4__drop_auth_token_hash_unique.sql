@@ -7,7 +7,7 @@
 -- The constraint is unnecessary because verification lookups filter by
 -- (channel, token_hash, used_at IS NULL), so duplicate hashes on used tokens
 -- are harmless. An index on (token_hash) is kept for lookup performance.
--- See docs/01_Phase1_Schema.md
+-- See docs/specs/phase-1/01-schema.md
 
 ALTER TABLE auth_tokens DROP CONSTRAINT auth_tokens_token_hash_key;
 

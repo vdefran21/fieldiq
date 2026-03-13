@@ -2,7 +2,7 @@
 
 Node.js/TypeScript SQS worker process. Consumes async tasks enqueued by the Kotlin backend. Does **not** expose HTTP endpoints — it is a pure consumer/worker.
 
-For architecture decisions and coding standards, see [CLAUDE.md](../CLAUDE.md). For detailed design, see [docs/05_Phase1_Agent_Layer.md](../docs/05_Phase1_Agent_Layer.md).
+For architecture decisions and coding standards, see [CLAUDE.md](../CLAUDE.md). For detailed design, see [docs/specs/phase-1/05-agent-layer.md](../docs/specs/phase-1/05-agent-layer.md).
 
 ## What This Does
 

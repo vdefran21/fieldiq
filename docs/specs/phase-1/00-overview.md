@@ -1,7 +1,7 @@
 # FieldIQ -- Phase 1 Overview
 **Target: Working cross-team scheduling negotiation demo + iOS MVP**
 **Timeline: Months 1-4 (16 weeks) | Stack: Kotlin + Node.js/TS + React Native Expo + Docker**
-**Last updated: 2026-03-05**
+**Last updated: 2026-03-13**
 
 ---
 
@@ -9,13 +9,13 @@
 
 | # | Document | Sprints | Contents |
 |---|----------|---------|----------|
-| 01 | [Schema](01_Phase1_Schema.md) | 1 | All SQL migrations (V1, V2, V3) + schema notes |
-| 02 | [Auth & Calendar](02_Phase1_Auth_Calendar.md) | 2-3 | OTP flow, Google Calendar OAuth, token encryption |
-| 03 | [Backend](03_Phase1_Backend.md) | 2-4 | Gradle deps, multi-tenancy, REST API, WebSocket, SchedulingService |
-| 04 | [Negotiation Protocol](04_Phase1_Negotiation_Protocol.md) | 4 | Protocol flow, state machine, HMAC auth, relay contract, error handling |
-| 05 | [Agent Layer](05_Phase1_Agent_Layer.md) | 3-4 | SQS workers, calendar sync, CommunicationAgent |
-| 06 | [Mobile](06_Phase1_Mobile.md) | 5-6 | Expo screens, negotiation UX, API client |
-| 07 | [CI & Testing](07_Phase1_CI_Testing.md) | 1+ | GitHub Actions, CI hardening, testing strategy |
+| 01 | [Schema](01-schema.md) | 1 | All SQL migrations (V1, V2, V3) + schema notes |
+| 02 | [Auth & Calendar](02-auth-calendar.md) | 2-3 | OTP flow, Google Calendar OAuth, token encryption |
+| 03 | [Backend](03-backend.md) | 2-4 | Gradle deps, multi-tenancy, REST API, WebSocket, SchedulingService |
+| 04 | [Negotiation Protocol](04-negotiation-protocol.md) | 4 | Protocol flow, state machine, HMAC auth, relay contract, error handling |
+| 05 | [Agent Layer](05-agent-layer.md) | 3-4 | SQS workers, calendar sync, CommunicationAgent |
+| 06 | [Mobile](06-mobile.md) | 5-6 | Expo screens, negotiation UX, API client |
+| 07 | [CI & Testing](07-ci-testing.md) | 1+ | GitHub Actions, CI hardening, testing strategy |
 
 ---
 
@@ -356,7 +356,7 @@ Sprint 6  (Weeks 11-12) NEGOTIATION UX + NOTIFICATIONS
                          .ics download for confirmed games
 
 Sprint 7  (Weeks 13-14) END-TO-END INTEGRATION
-                         Two managers on two iOS devices (or simulators),
+                         Two managers on two physical iOS devices,
                          full negotiation: initiate -> proposals -> confirm -> event,
                          push notifications arrive on both devices,
                          fix everything that breaks, polish the happy path,

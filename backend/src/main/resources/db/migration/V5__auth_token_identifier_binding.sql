@@ -13,7 +13,7 @@
 -- auth_tokens table is breached. The hash is deterministic, so the same normalized
 -- identifier always produces the same hash for lookup.
 --
--- See docs/02_Phase1_Auth_Calendar.md for the auth flow.
+-- See docs/specs/phase-1/02-auth-calendar.md for the auth flow.
 
 -- Step 1: Add column with temporary default for existing rows.
 -- Existing rows get '' (stale dev tokens); the default is dropped immediately after

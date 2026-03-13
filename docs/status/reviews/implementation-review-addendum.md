@@ -1,13 +1,13 @@
 # FieldIQ — Implementation Review Addendum
-**Addendum to:** [`../next_steps.md`](../next_steps.md)  
-**Companion status source:** [`../IMPLEMENTATION_TRACKING.md`](../IMPLEMENTATION_TRACKING.md)  
-**Last updated:** 2026-03-09
+**Addendum to:** [`../next-steps.md`](../next-steps.md)  
+**Companion status source:** [`../implementation-tracking.md`](../implementation-tracking.md)  
+**Last updated:** 2026-03-13
 
 ---
 
 ## Purpose
 
-This document supplements `next_steps.md` with a standards-based review of the current Phase 1 implementation. It does **not** replace the existing roadmap. Its purpose is to answer a narrower question:
+This document supplements `next-steps.md` with a standards-based review of the current Phase 1 implementation. It does **not** replace the existing roadmap. Its purpose is to answer a narrower question:
 
 **Are we on the right track technically and operationally, and what must change before FieldIQ is truly beta-ready?**
 
@@ -22,7 +22,7 @@ The short answer is **yes on direction, no on beta readiness**.
 | Architecture | **Strong** | The core product boundary is correct: deterministic scheduling and negotiation live in the Kotlin backend; the agent layer handles async work, calendar sync, and communication drafting. [C] |
 | Technical de-risking | **Strong** | The hardest Phase 1 uncertainty—the cross-instance negotiation protocol—appears materially de-risked by the current tracker and test evidence. [A][C][F] |
 | Implementation discipline | **Above average for Phase 1** | Migration-first schema, explicit architecture decisions, CI, integration tests, and remediation tracking are all good signals. [A][C][F] |
-| Product loop | **Incomplete** | The current `next_steps.md` is correct: the app still needs a user-visible path from first-team creation into real scheduling work. [B] |
+| Product loop | **Incomplete** | The current `next-steps.md` is correct: the app still needs a user-visible path from first-team creation into real scheduling work. [B] |
 | Security baseline | **Good, not finished** | OTP binding, hashed refresh tokens, encrypted calendar tokens, and HMAC relay are all sound; WebSocket auth, DevSecOps automation, and defense-in-depth still need work. [C][D][E] |
 | Beta readiness | **Not yet** | Push transport, mobile core loop, observability, and hardening are not complete enough for external pilots. [A][B] |
 | Strategic focus | **Correct** | The roadmap’s emphasis on shipping the cross-team protocol before broader expansion remains the right call. [G] |
@@ -78,7 +78,7 @@ This is a real engineering process, not a fragile demo stack.
 
 ### 1. The core manager workflow is still incomplete
 
-`next_steps.md` is directionally correct: the app currently stalls after first-team creation because the schedule empty state still needs to lead directly into real scheduling work. [B]
+`next-steps.md` is directionally correct: the app currently stalls after first-team creation because the schedule empty state still needs to lead directly into real scheduling work. [B]
 
 That means the system has proven backend capability, but not yet the user-visible product loop:
 
@@ -92,24 +92,23 @@ That means the system has proven backend capability, but not yet the user-visibl
 
 Until that path is complete, Phase 1 is technically impressive but not yet product-complete.
 
-### 2. Push notifications are not actually production-real yet
+### 2. Push notifications still need real-device proof
 
-The tracker is explicit that backend device registration exists, but the worker still only logs delivery attempts instead of calling Expo’s push service. [A]
+The tracker is explicit that backend device registration exists, and the worker now calls Expo’s push service instead of logging-only delivery attempts. [A]
 
-That is a meaningful gap, because Expo’s own documentation requires real device-side setup and credentials, and push notifications are **not supported on iOS simulators or Android emulators**. [8]
+The remaining gap is validation, not transport implementation. Expo’s own documentation still requires real device-side setup and credentials, and push notifications are **not supported on iOS simulators or Android emulators**. [8]
 
-**Required change:** treat Sprint 7 acceptance as **two physical devices**, not “two simulators.”
+**Required change:** treat Sprint 7 acceptance as **two physical devices**, not “two simulators,” and record real delivery evidence and failure handling.
 
 ### 3. WebSocket authentication is acceptable for local validation, but not ideal for beta
 
-The current backend doc passes JWT in the WebSocket query string. [D] OWASP’s WebSocket guidance says query-string tokens can appear in access logs and should be redacted; it also recommends explicit token handling, periodic re-validation, token rotation for long-lived sessions, and origin validation. [4]
+The implementation has already improved from long-lived bearer JWTs to a short-lived negotiation-scoped WebSocket token exchanged over REST, and it now validates `Origin` when present. [A][D] That is a meaningful security improvement.
+
+The remaining concern is that the handshake token still travels in the WebSocket URL query string, which can appear in access logs if not redacted. OWASP’s WebSocket guidance also recommends explicit token handling, periodic re-validation, and expiry-aware session lifecycle management. [4]
 
 **Recommendation before beta:**
-- move from long-lived JWT-in-query to either:
-  - a short-lived WS-specific token, or
-  - message-based token exchange after connection establishment;
-- redact handshake URLs from logs;
-- validate `Origin` on handshake;
+- keep the short-lived WS-specific token model;
+- redact handshake URLs / query params from logs;
 - close WS sessions on logout / expiry.
 
 ### 4. Calendar scope and mobile OAuth flow should be tightened
@@ -131,9 +130,9 @@ However, Postgres RLS is still deferred. [D] Official PostgreSQL documentation s
 
 **Recommendation:** if Phase 2 beta means multiple organizations on a shared production database, Row Level Security should move from “future hardening” to **pre-beta recommendation**.
 
-### 6. DevSecOps automation is still behind industry baseline
+### 6. DevSecOps automation is improving, but still behind industry baseline
 
-The current CI is good, but it is still primarily functional testing. [F] NIST SSDF and NIST IR 8397 both push toward automated, repeatable verification, including threat modeling, static analysis, dynamic testing, coverage analysis, fuzzing where appropriate, and continuous integration into the engineering workflow. [1][2]
+The current CI is good, and the repo now includes baseline guardrails such as dependency review, Dependabot, CodeQL, and a threat model. [A][F] The remaining gap is turning those pieces into a clearly enforced beta release lane. NIST SSDF and NIST IR 8397 still push toward automated, repeatable verification, including threat modeling, static analysis, dynamic testing, coverage analysis, fuzzing where appropriate, and continuous integration into the engineering workflow. [1][2]
 
 GitHub’s native tooling can close a meaningful part of this gap:
 
@@ -141,16 +140,16 @@ GitHub’s native tooling can close a meaningful part of this gap:
 - Secret scanning for committed credentials. [13]
 - Dependabot alerts and security / version updates. [14]
 
-**Recommendation:** add a minimum DevSecOps lane before external beta:
-- dependency review on PRs;
-- secret scanning and push protection;
-- Dependabot security + version updates;
-- at least one SAST path for Kotlin/TypeScript;
-- a lightweight threat model document.
+**Recommendation:** finish a minimum DevSecOps lane before external beta:
+- enforce dependency review on PRs;
+- enable secret scanning and push protection;
+- keep Dependabot security + version updates active;
+- confirm at least one SAST path for Kotlin/TypeScript remains green;
+- keep the threat model current as security decisions land.
 
-### 7. Observability is under-specified relative to system complexity
+### 7. Observability has started, but is still under-specified for beta
 
-The backend already includes Spring Boot Actuator in dependencies. [D] Spring’s production and observability docs emphasize health, metrics, and tracing support for production monitoring. [10]
+The backend already includes Spring Boot Actuator in dependencies, and the tracker records early health / metrics exposure plus correlation IDs. [A][D] Spring’s production and observability docs still emphasize health, metrics, and tracing support for production monitoring. [10]
 
 For a system that includes:
 - dual instances,
@@ -162,8 +161,8 @@ For a system that includes:
 you need correlation and visibility across the whole path.
 
 **Recommendation before beta:**
-- expose `/actuator/health` and readiness endpoints;
-- add correlation IDs for negotiation sessions and notification tasks;
+- finish `/actuator/health` and readiness validation;
+- extend correlation IDs across negotiation sessions and notification tasks end to end;
 - emit structured logs for session lifecycle, relay calls, notification attempts, and failures;
 - instrument queue lag, push success/failure, negotiation time-to-match, and session failure reasons.
 
@@ -181,26 +180,26 @@ This is not automatically a legal problem on its own, but it **is** a policy inc
 
 ## Revised Priority Order
 
-This should be treated as the standards-based extension of `next_steps.md`, not a replacement for it.
+This should be treated as the standards-based extension of `next-steps.md`, not a replacement for it.
 
 ### P0 — Must happen before external beta
 
-1. **Close the core loop in mobile**  
-   Replace passive empty states with a real path into `POST /negotiations`, route directly into `/(app)/negotiate/:id`, and make join details visible. [B]
+1. **Validate the core loop end to end**  
+   Run the existing mobile flow from login through confirmed event creation, then fix the bugs and friction that appear in Sprint 7. [B]
 
-2. **Implement real Expo push delivery**  
-   Complete actual push transport in the agent worker and validate on two physical devices. [A][8]
+2. **Validate Expo push delivery on real devices**  
+   Keep the current transport, but prove negotiation and confirmation pushes on two physical devices. [A][8]
 
-3. **Harden WebSocket authentication**  
-   Replace query-string JWTs with a safer pattern; add origin validation, token expiry handling, and log redaction. [4][D]
+3. **Finish WebSocket hardening**  
+   Keep the short-lived socket-token exchange, add log redaction, and close websocket sessions on logout / expiry. [4][D]
 
 4. **Tighten Google Calendar permissions and OAuth flow**  
    Use the smallest viable scope and browser-based native OAuth flow. [5][6][7]
 
-5. **Add minimum DevSecOps guardrails**  
+5. **Finish minimum DevSecOps guardrails**  
    Threat model, dependency review, secret scanning, Dependabot, and at least one SAST lane. [1][2][12][13][14]
 
-6. **Add production observability**  
+6. **Finish production observability**  
    Health checks, metrics, tracing/correlation, and structured logs. [10]
 
 7. **Resolve the minors-data policy mismatch**  
@@ -246,7 +245,7 @@ FieldIQ should **not** move into external pilot mode until all of the following 
 
 - Threat model documented for auth, calendar integration, WebSocket, negotiation relay, and notification flow. [1][2]
 - Secret scanning, dependency review, and Dependabot are enabled. [12][13][14]
-- WebSocket auth hardened beyond query-string JWT. [4]
+- WebSocket handshake tokens are short-lived, log-redacted, and closed on logout / expiry. [4]
 - Decision made on RLS and minors-data handling. [3][11][G][H]
 
 ### Operations gates
@@ -258,33 +257,23 @@ FieldIQ should **not** move into external pilot mode until all of the following 
 
 ## Recommended Doc Updates
 
-### Update `../next_steps.md`
-Keep the current priority order, but add a short note that the document is now governed by this addendum’s **P0 / P1 / P2** framing and pre-beta release gates.
+### Keep `../next-steps.md` aligned
+It should stay focused on end-to-end validation, physical-device push proof, and the remaining beta gates rather than on already-shipped mobile entrypoints.
 
-### Update `00_Phase1_Overview.md`
-Change Sprint 7 acceptance from “two iOS simulators” to **two physical devices** for push validation. [A][8]
+### Keep `../../specs/phase-1/00-overview.md` aligned
+Sprint 7 acceptance should remain phrased as **two physical devices** for push validation. [A][8]
 
-### Update `03_Phase1_Backend.md`
-Mark WebSocket query-param JWT auth as **temporary for Phase 1 local validation** and note the beta hardening path. [D][4]
+### Keep `../../specs/phase-1/03-backend.md` aligned
+Document the short-lived `socket-token` exchange plus remaining log-redaction / expiry hardening. [D][4]
 
-### Update `02_Phase1_Auth_Calendar.md`
+### Update `../../specs/phase-1/02-auth-calendar.md`
 Replace broad read-only wording with the narrowest acceptable Google free/busy scope and explicitly document browser-based native OAuth. [5][6][7]
 
-### Update `07_Phase1_CI_Testing.md`
+### Update `../../specs/phase-1/07-ci-testing.md`
 Add a security automation section covering dependency review, secret scanning, Dependabot, SAST, and release gating. [1][2][12][13][14]
 
-### Add a small threat-model doc
-Suggested filename:
-
-`docs/10_Threat_Model_Phase1.md`
-
-Scope:
-- auth / OTP abuse,
-- WebSocket session hijack,
-- cross-instance relay spoofing or replay,
-- calendar token compromise,
-- push token abuse,
-- tenant-isolation failures.
+### Keep the threat-model doc current
+The repo now has `docs/security/threat-model.md`. Keep it synchronized with auth, WebSocket, relay, calendar, push, and tenant-isolation decisions as beta gates change.
 
 ---
 
@@ -308,15 +297,15 @@ That is the fastest path to a credible external pilot and the best way to protec
 
 ### Internal project documents
 
-- **[A]** [`../IMPLEMENTATION_TRACKING.md`](../IMPLEMENTATION_TRACKING.md)
-- **[B]** [`../next_steps.md`](../next_steps.md)
-- **[C]** [`00_Phase1_Overview.md`](./00_Phase1_Overview.md)
-- **[D]** [`03_Phase1_Backend.md`](./03_Phase1_Backend.md)
-- **[E]** [`01_Phase1_Schema.md`](./01_Phase1_Schema.md)
-- **[F]** [`07_Phase1_CI_Testing.md`](./07_Phase1_CI_Testing.md)
-- **[G]** [`../FieldIQ_Business_Plan_2026_v4.docx.md`](../FieldIQ_Business_Plan_2026_v4.docx.md)
-- **[H]** [`05_Phase1_Agent_Layer.md`](./05_Phase1_Agent_Layer.md)
-- **[I]** [`08_Architecture_Diagrams.md`](./08_Architecture_Diagrams.md)
+- **[A]** [`../implementation-tracking.md`](../implementation-tracking.md)
+- **[B]** [`../next-steps.md`](../next-steps.md)
+- **[C]** [`../../specs/phase-1/00-overview.md`](../../specs/phase-1/00-overview.md)
+- **[D]** [`../../specs/phase-1/03-backend.md`](../../specs/phase-1/03-backend.md)
+- **[E]** [`../../specs/phase-1/01-schema.md`](../../specs/phase-1/01-schema.md)
+- **[F]** [`../../specs/phase-1/07-ci-testing.md`](../../specs/phase-1/07-ci-testing.md)
+- **[G]** [`../../product/fieldiq-business-plan-2026.md`](../../product/fieldiq-business-plan-2026.md)
+- **[H]** [`../../specs/phase-1/05-agent-layer.md`](../../specs/phase-1/05-agent-layer.md)
+- **[I]** [`../../specs/phase-1/08-architecture-diagrams.md`](../../specs/phase-1/08-architecture-diagrams.md)
 
 ### External standards and official guidance
 

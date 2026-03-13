@@ -1,5 +1,5 @@
 -- V6: Dual confirmation support for negotiation sessions.
--- See docs/04_Phase1_Negotiation_Protocol.md line 52:
+-- See docs/specs/phase-1/04-negotiation-protocol.md line 52:
 -- "Both managers confirm -> status = 'confirmed'"
 -- Events are only created after both sides confirm independently.
 -- This prevents one-sided scheduled games if the second manager never confirms.

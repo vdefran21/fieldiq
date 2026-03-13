@@ -168,7 +168,7 @@ kotlin
 
 Remove `syncSession()` calls for session bootstrapping (join-time syncs). Keep any remaining `syncSession()` calls for now — Phase 3 removes the rest.
 
-### docs/04_Phase1_Negotiation_Protocol.md
+### docs/specs/phase-1/04-negotiation-protocol.md
 
 - Clarify line 20 per architecture decision above
 - Add `/api/negotiate/incoming` to the relay contract section
@@ -287,7 +287,7 @@ Create `backend/src/main/resources/db/migration/V6__negotiation_dual_confirmatio
 sql
 
 ```sql
--- Track independent confirmation from each side per docs/04_Phase1_Negotiation_Protocol.md line 52:
+-- Track independent confirmation from each side per docs/specs/phase-1/04-negotiation-protocol.md line 52:
 -- "Both managers confirm -> status = 'confirmed'"
 -- Events are only created after both sides confirm.
 ALTER TABLE negotiation_sessions
@@ -499,7 +499,7 @@ typescript
 
 - Remove or `@Deprecated` annotate unused `ProposeRequest` if it exists
 
-### docs/IMPLEMENTATION_TRACKING.md
+### docs/status/implementation-tracking.md
 
 - Add Sprint 4 bugfix section with evidence for all 6 fixes
 - Update test counts
@@ -525,7 +525,7 @@ typescript
 |Modify|`backend/src/test/kotlin/com/fieldiq/service/NegotiationProtocolIntegrationTest.kt`|
 |Modify|`backend/src/test/kotlin/com/fieldiq/security/HmacAuthenticationFilterTest.kt`|
 |Modify|`shared/types/index.ts`|
-|Modify|`docs/IMPLEMENTATION_TRACKING.md`|
-|Modify|`docs/04_Phase1_Negotiation_Protocol.md`|
+|Modify|`docs/status/implementation-tracking.md`|
+|Modify|`docs/specs/phase-1/04-negotiation-protocol.md`|
 |Create|`backend/src/main/resources/db/migration/V6__negotiation_dual_confirmation.sql`|
 |Create|`backend/bruno/collections/negotiations/09-joinSessionForbidden.bru`|

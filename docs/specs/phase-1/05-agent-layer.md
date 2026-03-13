@@ -1,6 +1,6 @@
 # FieldIQ -- Phase 1 Agent Layer (Node.js/TypeScript)
 
-The agent layer handles async work: calendar sync, LLM calls, SQS message processing. It runs as a separate process. It does NOT own scheduling logic (see Decision 1 in [00_Phase1_Overview.md](00_Phase1_Overview.md)).
+The agent layer handles async work: calendar sync, LLM calls, SQS message processing. It runs as a separate process. It does NOT own scheduling logic (see Decision 1 in [00-overview.md](00-overview.md)).
 
 ---
 

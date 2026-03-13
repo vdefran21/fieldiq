@@ -45,7 +45,7 @@ backend/          Kotlin Spring Boot API (scheduling, negotiation, auth, REST, W
 agent/            Node.js/TypeScript SQS workers + Codex Haiku integration
 mobile/           React Native Expo app (iOS)
 shared/types/     TypeScript API contract interfaces
-docs/             Phase 1 implementation plans (00-07) + IMPLEMENTATION_TRACKING.md
+docs/             Specs, status, security guidance, product context, archived plans
 infra/            LocalStack init scripts
 ```
 
@@ -117,10 +117,10 @@ The core IP. State machine flow:
 ## Implementation Tracking
 
 > **THIS IS MANDATORY.** Before ending any session — whether pausing, stopping, or completing work —
-> you MUST update `docs/IMPLEMENTATION_TRACKING.md` to reflect the current state of all tasks.
+> you MUST update `docs/status/implementation-tracking.md` to reflect the current state of all tasks.
 > This is the single source of truth for project progress.
 
-**File:** `docs/IMPLEMENTATION_TRACKING.md`
+**File:** `docs/status/implementation-tracking.md`
 
 **When to update:**
 - **Before every stop/pause:** Mark tasks completed (✅), in progress (🔧), or not started (⬜). Fill in the "Evidence / Notes" column with file paths or details for any task you touched.
@@ -163,7 +163,7 @@ The following changes require updating **both** unit tests (`backend/src/test/`)
 3. Run `cd backend/bruno && npm test` to identify any broken Bruno integration tests.
 4. For each failure, follow the Testing Philosophy (consult docs first — fix the test or the backend accordingly).
 5. Verify **all** unit tests and **all** Bruno tests pass before considering the task complete.
-6. Update `docs/IMPLEMENTATION_TRACKING.md` documenting what changed and why.
+6. Update `docs/status/implementation-tracking.md` documenting what changed and why.
 
 **Do not defer this.** Test drift creates false confidence. Passing unit tests with failing integration tests means the API contract is broken from the client's perspective. Passing integration tests with failing unit tests means internal logic has diverged from expectations.
 
@@ -289,4 +289,4 @@ All TypeScript across the monorepo follows the same standard:
 Each migration file must include:
 - A header comment explaining what the migration does and why
 - Inline comments for non-obvious constraints, indexes, or design decisions
-- Reference to the relevant design doc (e.g., `-- See docs/01_Phase1_Schema.md`)
+- Reference to the relevant design doc (e.g., `-- See docs/specs/phase-1/01-schema.md`)
